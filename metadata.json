@@ -1,0 +1,6 @@
+{
+  "name": "Đại Chiến Cao Thủ Online",
+  "description": "Game đối kháng 2D platformer với 8 cao thủ võ lâm độc bản, hệ thống 8 chiêu thức tổ hợp, FSM chuẩn xác và đồ họa chiến đấu nảy lửa.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
