@@ -53,6 +53,7 @@ export class GameEngine {
   public winner: 'p1' | 'p2' | 'draw' | null = null;
   public winQuote: string = '';
 
+  public onSkillTriggered?: (playerId: 'p1' | 'p2', slot: SkillSlot) => void;
   public onMatchEnd?: (winner: 'p1' | 'p2' | 'draw', quote: string) => void;
 
   constructor(
@@ -173,7 +174,7 @@ export class GameEngine {
     if (this.shakeTrauma > 0) {
       this.shakeTrauma = Math.max(0, this.shakeTrauma - dt * 2.8);
       const intensity = this.shakeTrauma * this.shakeTrauma * 16;
-      if (this.settings.screenShake) {
+      if (this.settings?.screenShake) {
         this.screenShake.x = (Math.random() * 2 - 1) * intensity;
         this.screenShake.y = (Math.random() * 2 - 1) * intensity;
       }
@@ -185,8 +186,9 @@ export class GameEngine {
     this.updateParticles(dt);
     this.updateDamageTexts(dt);
 
-    if (this.hitstopTimer > 0) {
+    if (typeof this.hitstopTimer === 'number' && this.hitstopTimer > 0) {
       this.hitstopTimer -= dt;
+      if (isNaN(this.hitstopTimer) || this.hitstopTimer < 0) this.hitstopTimer = 0;
       return;
     }
 
@@ -286,7 +288,7 @@ export class GameEngine {
       f.stamina -= 15;
       f.state = 'DASH';
       f.stateTime = 0;
-      sound.playDash();
+      try { sound.playDash(); } catch (_) {}
 
       const isHoldingOpposite = (f.facing === 1 && moveLeft) || (f.facing === -1 && moveRight);
       const dashDir = isHoldingOpposite ? -f.facing : f.facing;
@@ -366,7 +368,7 @@ export class GameEngine {
       f.isGrounded = false;
       f.currentPlatform = null;
       f.state = 'JUMP';
-      sound.playJump();
+      try { sound.playJump(); } catch (_) {}
       this.spawnSparks(f.x, f.y, '#ffffff', 4);
     }
 
@@ -427,7 +429,7 @@ export class GameEngine {
     return null;
   }
 
-  public executeSkill(f: FighterEntity, slot: SkillSlot) {
+  public executeSkill(f: FighterEntity, slot: SkillSlot, forceRemote: boolean = false) {
     const skill = f.character.skills[slot];
     if (!skill) return;
 
@@ -444,20 +446,26 @@ export class GameEngine {
       }
     }
 
-    f.stamina = Math.max(0, f.stamina - skill.staminaCost);
+    if (!forceRemote) {
+      f.stamina = Math.max(0, f.stamina - skill.staminaCost);
+      this.onSkillTriggered?.(f.playerId, slot);
+    }
+
     f.state = 'ATTACK';
     f.currentSkill = skill;
     f.skillTick = 0;
     f.stateTime = 0;
 
-    if (slot === 'WJ') {
-      sound.playUltimate();
-      this.shakeTrauma = Math.min(1.0, this.shakeTrauma + 0.8);
-    } else if (slot === 'J' && f.normalComboStep === 0) {
-      sound.playHit('heavy');
-    } else {
-      sound.playHit(skill.damage >= 70 ? 'heavy' : 'slash');
-    }
+    try {
+      if (slot === 'WJ') {
+        sound.playUltimate();
+        this.shakeTrauma = Math.min(1.0, this.shakeTrauma + 0.8);
+      } else if (slot === 'J' && f.normalComboStep === 0) {
+        sound.playHit('heavy');
+      } else {
+        sound.playHit(skill.damage >= 70 ? 'heavy' : 'slash');
+      }
+    } catch (_) {}
 
     if (skill.isCounter) f.counterTime = 0.7;
 
@@ -595,7 +603,7 @@ export class GameEngine {
       damage: dmg,
       knockbackX: kx,
       knockbackY: ky,
-      hitstop: skill.hitstop,
+      hitstop: skill.hitstop || 0.05,
       isUnblockable: skill.isUnblockable,
       isTrip: skill.effectType === 'trip',
       isGrab: skill.isGrab,
@@ -995,9 +1003,14 @@ export class GameEngine {
   private updateProjectiles(dt: number) {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
+      if (!p) {
+        this.projectiles.splice(i, 1);
+        continue;
+      }
+
       p.lifetime -= dt;
-      p.x += p.vx;
-      p.y += p.vy;
+      p.x += p.vx || 0;
+      p.y += p.vy || 0;
 
       if (p.lifetime <= 0) {
         this.projectiles.splice(i, 1);
@@ -1007,39 +1020,50 @@ export class GameEngine {
       const target = p.ownerId === 'p1' ? this.p2 : this.p1;
       const owner = p.ownerId === 'p1' ? this.p1 : this.p2;
 
-      if (p.isPickupBurger) {
-        if (Math.abs(owner.x - p.x) < 40 && owner.isGrounded && owner.character.id === 'hoang_saigon') {
-          owner.hp = Math.min(owner.character.maxHp, owner.hp + 150);
-          owner.hoangScaleBonus = Math.min(1.5, owner.hoangScaleBonus + 0.1);
-          this.addDamageText(owner.x, owner.y - 70, '+150 HP (BURGER KING)!', '#f59e0b', true);
-          this.projectiles.splice(i, 1);
-          continue;
-        }
-        if (Math.abs(target.x - p.x) < 40 && target.isGrounded) {
-          target.vx = target.facing * -8;
-          target.state = 'HIT_STUN';
-          target.hitStunTime = 0.6;
-          this.addDamageText(target.x, target.y - 60, 'TRÚNG BURGER!', '#ef4444');
-          this.projectiles.splice(i, 1);
-          continue;
-        }
-      } else {
-        const pBox = { x: p.x - p.w / 2, y: p.y - p.h, w: p.w, h: p.h };
-        const hurtbox = getFighterHurtbox(target);
-        if (checkAABBCollision(pBox, hurtbox)) {
-          const dmg = calculateDamage(p.damage, target);
-          target.hp = Math.max(0, target.hp - dmg);
-          target.state = 'HIT_STUN';
-          target.hitStunTime = 0.4;
-          target.vx = target.facing === owner.facing ? owner.facing * p.knockbackX : -owner.facing * p.knockbackX;
-          target.vy = p.knockbackY;
+      try {
+        if (p.isPickupBurger) {
+          if (Math.abs(owner.x - p.x) < 40 && owner.isGrounded && owner.character?.id === 'hoang_saigon') {
+            owner.hp = Math.min(owner.character.maxHp, owner.hp + 150);
+            owner.hoangScaleBonus = Math.min(1.5, owner.hoangScaleBonus + 0.1);
+            this.addDamageText(owner.x, owner.y - 70, '+150 HP (BURGER KING)!', '#f59e0b', true);
+            this.projectiles.splice(i, 1);
+            continue;
+          }
+          if (Math.abs(target.x - p.x) < 40 && target.isGrounded) {
+            target.vx = target.facing * -8;
+            target.state = 'HIT_STUN';
+            target.hitStunTime = 0.6;
+            this.addDamageText(target.x, target.y - 60, 'TRÚNG BURGER!', '#ef4444');
+            this.projectiles.splice(i, 1);
+            continue;
+          }
+        } else {
+          const pBox = { x: p.x - (p.w || 30) / 2, y: p.y - (p.h || 30), w: p.w || 30, h: p.h || 30 };
+          const hurtbox = getFighterHurtbox(target);
+          if (hurtbox && checkAABBCollision(pBox, hurtbox)) {
+            let dmg = p.damage || 30;
+            try {
+              dmg = calculateDamage(p.damage, target);
+            } catch (_) {}
+            if (isNaN(dmg)) dmg = 30;
 
-          this.addDamageText(target.x, target.y - 60, `-${dmg}`, '#ef4444');
-          this.spawnSparks(p.x, p.y, p.color, 10);
-          sound.playHit('heavy');
+            target.hp = Math.max(0, target.hp - dmg);
+            target.state = 'HIT_STUN';
+            target.hitStunTime = 0.4;
+            const kx = p.knockbackX || 6;
+            const ky = p.knockbackY || -4;
+            target.vx = target.facing === owner.facing ? owner.facing * kx : -owner.facing * kx;
+            target.vy = ky;
 
-          this.projectiles.splice(i, 1);
+            this.addDamageText(target.x, target.y - 60, `-${Math.round(dmg)}`, '#ef4444');
+            this.spawnSparks(p.x, p.y, p.color || '#ff0000', 10);
+            try { sound.playHit('heavy'); } catch (_) {}
+
+            this.projectiles.splice(i, 1);
+          }
         }
+      } catch (err) {
+        this.projectiles.splice(i, 1);
       }
     }
   }
@@ -1047,38 +1071,62 @@ export class GameEngine {
   private processHitboxes(dt: number) {
     for (let i = this.hitboxes.length - 1; i >= 0; i--) {
       const hb = this.hitboxes[i];
+      if (!hb) {
+        this.hitboxes.splice(i, 1);
+        continue;
+      }
+
       hb.activeTicks--;
 
       const attacker = hb.attackerId === 'p1' ? this.p1 : this.p2;
       const defender = hb.attackerId === 'p1' ? this.p2 : this.p1;
 
-      if (defender.state !== 'DEAD' && defender.invulnerableTime <= 0) {
-        const hurtbox = getFighterHurtbox(defender);
-        if (checkAABBCollision(hb, hurtbox)) {
-          const isGuarding = defender.state === 'GUARD' && defender.facing !== attacker.facing;
-          if (isGuarding && !hb.isUnblockable) {
-            defender.stamina -= hb.damage * 0.4;
-            if (defender.stamina <= 0) {
-              defender.state = 'GUARD_BROKEN';
-              defender.guardBreakTime = 1.5;
-              this.addDamageText(defender.x, defender.y - 70, 'BỂ GIÁP!', '#ef4444', true);
-            } else {
-              this.addDamageText(defender.x, defender.y - 60, 'ĐÃ ĐỠ!', '#3b82f6');
-            }
-          } else {
-            const dmg = calculateDamage(hb.damage, defender);
-            defender.hp = Math.max(0, defender.hp - dmg);
-            defender.state = 'HIT_STUN';
-            defender.hitStunTime = 0.35;
-            defender.vx = attacker.facing * hb.knockbackX;
-            defender.vy = hb.knockbackY;
+      if (defender && defender.state !== 'DEAD' && (defender.invulnerableTime || 0) <= 0) {
+        try {
+          const hurtbox = getFighterHurtbox(defender);
+          if (hurtbox && checkAABBCollision(hb, hurtbox)) {
+            const isGuarding = defender.state === 'GUARD' && defender.facing !== attacker.facing;
+            const safeDamage = typeof hb.damage === 'number' && !isNaN(hb.damage) ? hb.damage : 30;
 
-            this.hitstopTimer = hb.hitstop;
-            this.shakeTrauma = Math.min(1.0, this.shakeTrauma + 0.3);
-            this.addDamageText(defender.x, defender.y - 70, `-${dmg}`, hb.isHeavy ? '#f59e0b' : '#ef4444', hb.isHeavy);
-            this.spawnSparks(defender.x, defender.y - 50, hb.sparkColor, 12);
-            sound.playHit(hb.soundType);
+            if (isGuarding && !hb.isUnblockable) {
+              defender.stamina = Math.max(0, (defender.stamina || 100) - safeDamage * 0.4);
+              if (defender.stamina <= 0) {
+                defender.state = 'GUARD_BROKEN';
+                defender.guardBreakTime = 1.5;
+                this.addDamageText(defender.x, defender.y - 70, 'BỂ GIÁP!', '#ef4444', true);
+              } else {
+                this.addDamageText(defender.x, defender.y - 60, 'ĐÃ ĐỠ!', '#3b82f6');
+              }
+            } else {
+              let dmg = safeDamage;
+              try {
+                dmg = calculateDamage(safeDamage, defender);
+              } catch (_) {}
+              if (isNaN(dmg) || typeof dmg !== 'number') dmg = safeDamage;
+
+              defender.hp = Math.max(0, (defender.hp || 1000) - dmg);
+              defender.state = 'HIT_STUN';
+              defender.hitStunTime = 0.35;
+
+              const kx = typeof hb.knockbackX === 'number' && !isNaN(hb.knockbackX) ? hb.knockbackX : 6;
+              const ky = typeof hb.knockbackY === 'number' && !isNaN(hb.knockbackY) ? hb.knockbackY : -4;
+              defender.vx = (attacker?.facing || 1) * kx;
+              defender.vy = ky;
+
+              this.hitstopTimer = typeof hb.hitstop === 'number' && !isNaN(hb.hitstop) ? hb.hitstop : 0.05;
+              this.shakeTrauma = Math.min(1.0, (this.shakeTrauma || 0) + 0.3);
+              this.addDamageText(defender.x, defender.y - 70, `-${Math.round(dmg)}`, hb.isHeavy ? '#f59e0b' : '#ef4444', !!hb.isHeavy);
+              this.spawnSparks(defender.x, defender.y - 50, hb.sparkColor || '#ff0000', 12);
+
+              try {
+                sound.playHit(hb.soundType || 'light');
+              } catch (_) {}
+            }
+
+            this.hitboxes.splice(i, 1);
+            continue;
           }
+        } catch (err) {
           this.hitboxes.splice(i, 1);
           continue;
         }
@@ -1093,7 +1141,6 @@ export class GameEngine {
   private applyPhysics(f: FighterEntity, dt: number) {
     const floorY = STAGE_CONFIG?.floorY || 560;
 
-    // --- BỘ BẢO VỆ TỌA ĐỘ SAFETY GUARD ---
     if (typeof f.x !== 'number' || isNaN(f.x)) {
       f.x = f.playerId === 'p1' ? 300 : 900;
     }
@@ -1111,7 +1158,6 @@ export class GameEngine {
     f.isGrounded = checkResult.isGrounded;
     f.currentPlatform = checkResult.platform;
 
-    // Giữ chân nhân vật không bị lọt khỏi sàn đấu
     if (f.y >= floorY) {
       f.isGrounded = true;
       f.vy = 0;
@@ -1277,7 +1323,6 @@ export class GameEngine {
     }
   }
 
-  // --- HÀM ĐỒNG BỘ MẠNG TỌA ĐỘ AN TOÀN ---
   public getLocalNetState(isHost: boolean) {
     const localPlayer = isHost ? this.p1 : this.p2;
     if (!localPlayer) return null;
@@ -1316,7 +1361,8 @@ export class GameEngine {
     if (typeof netState.stamina === 'number' && !isNaN(netState.stamina)) {
       opponent.stamina = netState.stamina;
     }
-    if (netState.state) {
+
+    if (netState.state && opponent.state !== 'ATTACK') {
       opponent.state = netState.state;
     }
     if (netState.facing === 1 || netState.facing === -1) {
