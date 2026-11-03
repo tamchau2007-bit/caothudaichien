@@ -4,7 +4,6 @@
  */
 
 import {
-  CharacterData,
   CharacterId,
   DamageText,
   FighterEntity,
@@ -14,7 +13,6 @@ import {
   KeyInputState,
   MapData,
   Particle,
-  PetEntity,
   Projectile,
   SkillDefinition,
   SkillSlot,
