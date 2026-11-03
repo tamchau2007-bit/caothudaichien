@@ -66,8 +66,9 @@ export class GameEngine {
     this.settings = settings;
     this.currentMap = MAPS[mapId as keyof typeof MAPS] || MAPS.loi_dai;
 
-    this.p1 = this.createFighter(p1CharId, 'p1', 300, 1);
-    this.p2 = this.createFighter(p2CharId, 'p2', 900, -1);
+    const floorY = STAGE_CONFIG?.floorY || 560;
+    this.p1 = this.createFighter(p1CharId, 'p1', 300, 1, floorY);
+    this.p2 = this.createFighter(p2CharId, 'p2', 900, -1, floorY);
 
     for (let i = 0; i < MAX_PARTICLES; i++) {
       this.particles.push({
@@ -90,14 +91,15 @@ export class GameEngine {
     charId: CharacterId,
     playerId: 'p1' | 'p2',
     spawnX: number,
-    facing: 1 | -1
+    facing: 1 | -1,
+    spawnY: number = 560
   ): FighterEntity {
     const char = CHARACTERS[charId] || CHARACTERS.hoang_saigon;
     const fighter: FighterEntity = {
       playerId,
       character: char,
       x: spawnX,
-      y: STAGE_CONFIG.floorY,
+      y: spawnY,
       vx: 0,
       vy: 0,
       width: 65,
@@ -154,7 +156,7 @@ export class GameEngine {
         id: `cat_${playerId}`,
         ownerId: playerId,
         x: spawnX + facing * 35,
-        y: STAGE_CONFIG.floorY,
+        y: spawnY,
         vx: 0,
         facing,
         state: 'follow',
@@ -608,6 +610,7 @@ export class GameEngine {
   private spawnSkillObject(f: FighterEntity, skill: SkillDefinition) {
     const facing = f.facing;
     const charId = f.character.id;
+    const floorY = STAGE_CONFIG?.floorY || 560;
 
     if (charId === 'hoang_saigon' && skill.id === 'I') {
       this.projectiles.push({
@@ -616,7 +619,7 @@ export class GameEngine {
         characterId: charId,
         skillId: 'I',
         x: f.x + facing * 80,
-        y: STAGE_CONFIG.floorY,
+        y: floorY,
         vx: 0,
         vy: 0,
         w: 38,
@@ -636,7 +639,7 @@ export class GameEngine {
         characterId: charId,
         skillId: 'SI',
         x: f.x + facing * 60,
-        y: STAGE_CONFIG.floorY,
+        y: floorY,
         vx: 0,
         vy: 0,
         w: 42,
@@ -656,7 +659,7 @@ export class GameEngine {
         characterId: charId,
         skillId: 'U',
         x: f.x + facing * 70,
-        y: STAGE_CONFIG.floorY,
+        y: floorY,
         vx: 0,
         vy: 0,
         w: 60,
@@ -676,7 +679,7 @@ export class GameEngine {
         characterId: charId,
         skillId: 'SI',
         x: f.x + facing * 75,
-        y: STAGE_CONFIG.floorY,
+        y: floorY,
         vx: 0,
         vy: 0,
         w: 36,
@@ -717,7 +720,7 @@ export class GameEngine {
           characterId: charId,
           skillId: 'SI',
           x: f.x + facing * (s * 55),
-          y: STAGE_CONFIG.floorY,
+          y: floorY,
           vx: 0,
           vy: 0,
           w: 40,
@@ -782,7 +785,7 @@ export class GameEngine {
         characterId: charId,
         skillId: 'SI',
         x: f.x + facing * 45,
-        y: STAGE_CONFIG.floorY,
+        y: floorY,
         vx: facing * 8,
         vy: 0,
         w: 55,
@@ -803,7 +806,7 @@ export class GameEngine {
           characterId: charId,
           skillId: 'WI',
           x: f.x + facing * (lf * 38),
-          y: STAGE_CONFIG.floorY,
+          y: floorY,
           vx: 0,
           vy: 0,
           w: 25,
@@ -831,7 +834,7 @@ export class GameEngine {
         characterId: charId,
         skillId: 'WI',
         x: f.x + facing * 60,
-        y: STAGE_CONFIG.floorY,
+        y: floorY,
         vx: 0,
         vy: 0,
         w: 28,
@@ -871,7 +874,7 @@ export class GameEngine {
         characterId: charId,
         skillId: 'I',
         x: f.x + facing * 45,
-        y: STAGE_CONFIG.floorY,
+        y: floorY,
         vx: facing * 16,
         vy: 0,
         w: 48,
@@ -891,7 +894,7 @@ export class GameEngine {
         characterId: charId,
         skillId: 'SI',
         x: f.x + facing * 40,
-        y: STAGE_CONFIG.floorY,
+        y: floorY,
         vx: facing * 5,
         vy: 0,
         w: 38,
@@ -911,7 +914,7 @@ export class GameEngine {
         characterId: charId,
         skillId: 'SJ',
         x: f.x + facing * 40,
-        y: STAGE_CONFIG.floorY,
+        y: floorY,
         vx: facing * 12,
         vy: 0,
         w: 60,
@@ -931,7 +934,7 @@ export class GameEngine {
         characterId: charId,
         skillId: 'WJ',
         x: f.x + facing * 120,
-        y: STAGE_CONFIG.floorY,
+        y: floorY,
         vx: 0,
         vy: 0,
         w: 140,
@@ -1088,22 +1091,41 @@ export class GameEngine {
   }
 
   private applyPhysics(f: FighterEntity, dt: number) {
+    const floorY = STAGE_CONFIG?.floorY || 560;
+
+    // --- BỘ BẢO VỆ TỌA ĐỘ SAFETY GUARD ---
+    if (typeof f.x !== 'number' || isNaN(f.x)) {
+      f.x = f.playerId === 'p1' ? 300 : 900;
+    }
+    if (typeof f.y !== 'number' || isNaN(f.y)) {
+      f.y = floorY;
+    }
+    if (typeof f.vx !== 'number' || isNaN(f.vx)) f.vx = 0;
+    if (typeof f.vy !== 'number' || isNaN(f.vy)) f.vy = 0;
+
     f.x += f.vx;
     f.y += f.vy;
 
-    const mapPlatforms = this.currentMap.platforms || [];
-    const checkResult = checkGroundAndPlatformsRaycast(f, mapPlatforms, STAGE_CONFIG.floorY);
+    const mapPlatforms = this.currentMap?.platforms || [];
+    const checkResult = checkGroundAndPlatformsRaycast(f, mapPlatforms, floorY);
     f.isGrounded = checkResult.isGrounded;
     f.currentPlatform = checkResult.platform;
-    if (f.isGrounded) {
+
+    // Giữ chân nhân vật không bị lọt khỏi sàn đấu
+    if (f.y >= floorY) {
+      f.isGrounded = true;
+      f.vy = 0;
+      f.y = floorY;
+      f.jumpsLeft = f.character.jumpCount;
+    } else if (f.isGrounded) {
       f.vy = 0;
       f.y = checkResult.groundY;
       f.jumpsLeft = f.character.jumpCount;
     } else {
-      f.vy += STAGE_CONFIG.gravity;
+      f.vy += STAGE_CONFIG?.gravity || 0.8;
     }
 
-    checkWallBounce(f, STAGE_CONFIG.minX, STAGE_CONFIG.maxX);
+    checkWallBounce(f, STAGE_CONFIG?.minX || 50, STAGE_CONFIG?.maxX || 1150);
   }
 
   private updateFacing() {
@@ -1255,13 +1277,14 @@ export class GameEngine {
     }
   }
 
-  // --- HÀM ĐỒNG BỘ MẠNG BỌC THÉP (SAFE REALTIME SYNC ENGINE) ---
+  // --- HÀM ĐỒNG BỘ MẠNG TỌA ĐỘ AN TOÀN ---
   public getLocalNetState(isHost: boolean) {
     const localPlayer = isHost ? this.p1 : this.p2;
     if (!localPlayer) return null;
+    const floorY = STAGE_CONFIG?.floorY || 560;
     return {
       x: typeof localPlayer.x === 'number' && !isNaN(localPlayer.x) ? localPlayer.x : (isHost ? 300 : 900),
-      y: typeof localPlayer.y === 'number' && !isNaN(localPlayer.y) ? localPlayer.y : 400,
+      y: typeof localPlayer.y === 'number' && !isNaN(localPlayer.y) ? localPlayer.y : floorY,
       vx: typeof localPlayer.vx === 'number' && !isNaN(localPlayer.vx) ? localPlayer.vx : 0,
       vy: typeof localPlayer.vy === 'number' && !isNaN(localPlayer.vy) ? localPlayer.vy : 0,
       hp: typeof localPlayer.hp === 'number' && !isNaN(localPlayer.hp) ? localPlayer.hp : 1000,
@@ -1275,11 +1298,10 @@ export class GameEngine {
     const opponent = isHost ? this.p2 : this.p1;
     if (!opponent || !netState) return;
 
-    // CHỈ GHI NHẬN KHI TỌA ĐỘ TRUYỀN SANG LÀ SỐ HỢP LỆ (TRÁNH TRƯỜNG HỢP NAN LÀM BIẾN MẤT NHÂN VẬT)
-    if (typeof netState.x === 'number' && !isNaN(netState.x)) {
+    if (typeof netState.x === 'number' && !isNaN(netState.x) && netState.x > 0 && netState.x < 1200) {
       opponent.x = netState.x;
     }
-    if (typeof netState.y === 'number' && !isNaN(netState.y)) {
+    if (typeof netState.y === 'number' && !isNaN(netState.y) && netState.y > 0 && netState.y < 680) {
       opponent.y = netState.y;
     }
     if (typeof netState.vx === 'number' && !isNaN(netState.vx)) {
