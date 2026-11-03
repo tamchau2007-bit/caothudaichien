@@ -84,29 +84,33 @@ app.get('/api/rooms/:code', (req, res) => {
     mapId: room.mapId,
     inGame: room.inGame,
     players: playerList,
-  }));
+  });
 });
 
 // WebSocket Server attached to the same HTTP server on /ws
 const wss = new WebSocketServer({ server, path: '/ws' });
 
-wss.on('connection', (ws, req) => {
-  const url = new URL(req.url || '', `http://${req.headers.host}`);
-  
-  // FIX 1: Hỗ trợ đọc mã phòng từ mọi định dạng tham số (roomId, roomCode, code)
-  const rawCode = url.searchParams.get('roomId') || url.searchParams.get('roomCode') || url.searchParams.get('code') || '';
+wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
+  const hostHeader = req.headers.host || 'localhost';
+  const url = new URL(req.url || '', `http://${hostHeader}`);
+
+  const rawCode =
+    url.searchParams.get('roomId') ||
+    url.searchParams.get('roomCode') ||
+    url.searchParams.get('code') ||
+    '';
   const roomCode = rawCode.toUpperCase().trim();
-  
-  const peerId = url.searchParams.get('peerId') || `player_${Math.random().toString(36).substring(2, 7)}`;
+
+  const peerId =
+    url.searchParams.get('peerId') ||
+    `player_${Math.random().toString(36).substring(2, 7)}`;
   const isHostReq = url.searchParams.get('isHost') === 'true';
   const charId = url.searchParams.get('characterId') || 'hoang_saigon';
 
   let currentRoom = rooms.get(roomCode);
 
-  // FIX 2: Không tự tạo phòng linh tinh khi Player 2 nhập mã
   if (!currentRoom) {
     if (isHostReq && roomCode) {
-      // Nếu là Host tạo phòng
       currentRoom = {
         code: roomCode,
         mapId: 'nguyen_hue',
@@ -116,22 +120,26 @@ wss.on('connection', (ws, req) => {
       };
       rooms.set(roomCode, currentRoom);
     } else {
-      // Nếu Player 2 nhập sai mã -> Báo lỗi và ngắt kết nối ngay
-      ws.send(JSON.stringify({ type: 'error', message: 'Mã phòng không tồn tại!' }));
+      ws.send(
+        JSON.stringify({ type: 'error', message: 'Mã phòng không tồn tại!' })
+      );
       ws.close();
       return;
     }
   }
 
-  // FIX 3: Chặn nếu phòng đã đủ 2 người chơi (dành cho game đối kháng 1v1)
   const existingPlayerKeys = Object.keys(currentRoom.players);
   if (!currentRoom.players[peerId] && existingPlayerKeys.length >= 2) {
-    ws.send(JSON.stringify({ type: 'error', message: 'Phòng đấu đã đầy (Tối đa 2 người)!' }));
+    ws.send(
+      JSON.stringify({
+        type: 'error',
+        message: 'Phòng đấu đã đầy (Tối đa 2 người)!',
+      })
+    );
     ws.close();
     return;
   }
 
-  // Đăng ký thông tin người chơi
   const isHost = isHostReq || existingPlayerKeys.length === 0;
   currentRoom.players[peerId] = {
     id: peerId,
@@ -141,7 +149,6 @@ wss.on('connection', (ws, req) => {
     ws,
   };
 
-  // Hàm Broadcast dữ liệu cho tất cả người chơi trong phòng
   const broadcast = (data: any, excludeSelf: boolean = false) => {
     const raw = JSON.stringify(data);
     if (!currentRoom) return;
@@ -154,7 +161,6 @@ wss.on('connection', (ws, req) => {
     }
   };
 
-  // Cập nhật danh sách người chơi trong phòng cho cả 2 máy
   const sendRoomUpdate = () => {
     if (!currentRoom) return;
     const playerList = Object.values(currentRoom.players).map((p) => ({
@@ -174,7 +180,7 @@ wss.on('connection', (ws, req) => {
 
   sendRoomUpdate();
 
-  ws.on('message', (message) => {
+  ws.on('message', (message: Buffer | string) => {
     try {
       const data = JSON.parse(message.toString());
       if (!currentRoom) return;
@@ -197,7 +203,6 @@ wss.on('connection', (ws, req) => {
       } else if (data.type === 'start_match') {
         if (currentRoom.players[peerId]?.isHost) {
           currentRoom.inGame = true;
-          // Phát tín hiệu BẮT ĐẦU TRẬN ĐẤU cho CẢ HAI MÁY cùng chuyển màn hình
           broadcast({
             type: 'match_started',
             roomCode: currentRoom.code,
@@ -210,7 +215,6 @@ wss.on('connection', (ws, req) => {
           });
         }
       } else if (data.type === 'input' || data.type === 'state_sync') {
-        // Đồng bộ nút bấm realtime sang đối thủ ngay lập tức
         broadcast(data, true);
       }
     } catch (err) {
@@ -224,7 +228,6 @@ wss.on('connection', (ws, req) => {
       if (Object.keys(currentRoom.players).length === 0) {
         rooms.delete(currentRoom.code);
       } else {
-        // Chuyển quyền Host nếu Host thoát phòng
         const remaining = Object.values(currentRoom.players);
         if (remaining.length > 0 && !remaining.some((p) => p.isHost)) {
           remaining[0].isHost = true;
@@ -244,9 +247,9 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.resolve(__dirname, 'dist');
+    const distPath = path.resolve(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+    app.get('*', (_req, res) => {
       res.sendFile(path.resolve(distPath, 'index.html'));
     });
   }
