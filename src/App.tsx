@@ -189,6 +189,13 @@ export default function App() {
           remoteInputsRef.current = inputs;
         };
 
+        // ĐĂNG KÝ NHẬN TỌA ĐỘ VÀ HP THỜI GIAN THỰC TỪ ĐỐI THỦ
+        net.onOpponentState = (netState) => {
+          if (engineRef.current) {
+            engineRef.current.applyOpponentNetState(netState, host);
+          }
+        };
+
         net.onPlayerJoined = (oppId, oppChar) => {
           if (host) {
             setP2Char(oppChar);
@@ -303,6 +310,12 @@ export default function App() {
 
         if (gameState === 'playing') {
           engine.update(rawDt, p1FinalInputs, p2FinalInputs);
+
+          // GỬI STATE MÁY BẢN THÂN SANG CHO ĐỐI THỦ LIÊN TỤC MỖI KHUNG HÌNH (60 FPS)
+          if (gameMode === 'online' && netManagerRef.current) {
+            const myNetState = engine.getLocalNetState(isOnlineHost);
+            netManagerRef.current.sendState(myNetState);
+          }
         }
 
         renderer.render(
