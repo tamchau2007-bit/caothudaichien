@@ -97,77 +97,6 @@ export default function App() {
     sound.sfxVolume = settings.sfxVolume;
   }, [settings]);
 
-  // Autostart & URL Room parameter
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const autostart = params.get('autostart');
-    const roomParam = params.get('room') || params.get('roomCode') || params.get('code');
-
-    if (roomParam) {
-      setGameMode('online');
-      setRoomCode(roomParam.toUpperCase().trim());
-      setShowOnlineLobby(true);
-    } else if (autostart === '1') {
-      startMatch('hoang_saigon', 'kendu', 'nguyen_hue', 'ai');
-    }
-  }, []);
-
-  // Keyboard Event Listeners
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
-        e.preventDefault();
-      }
-
-      if (gameState === 'title' && !showOnlineLobby && (e.code === 'Enter' || e.code === 'Space' || e.code === 'KeyK')) {
-        setGameState('select');
-        return;
-      }
-
-      if (e.code === 'Escape' || e.code === 'KeyP') {
-        if (gameState === 'playing') {
-          setGameState('paused');
-          sound.stopBGM();
-        } else if (gameState === 'paused') {
-          setGameState('playing');
-          sound.startBGM();
-        }
-        return;
-      }
-
-      if (e.code === 'KeyR' && (gameState === 'paused' || gameState === 'gameover')) {
-        restartMatch();
-        return;
-      }
-
-      if (!heldKeys.current.has(e.code)) {
-        justPressedKeys.current.add(e.code);
-      }
-      heldKeys.current.add(e.code);
-    };
-
-    const onKeyUp = (e: KeyboardEvent) => {
-      heldKeys.current.delete(e.code);
-    };
-
-    const onBlur = () => {
-      heldKeys.current.clear();
-      justPressedKeys.current.clear();
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('blur', onBlur);
-    document.addEventListener('visibilitychange', onBlur);
-
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-      window.removeEventListener('blur', onBlur);
-      document.removeEventListener('visibilitychange', onBlur);
-    };
-  }, [gameState, showOnlineLobby]);
-
   const startMatch = useCallback(
     (
       p1Selected: CharacterId,
@@ -248,6 +177,77 @@ export default function App() {
     startMatch(p1Char, p2Char, selectedMapId, gameMode, roomCode, isOnlineHost, netManagerRef.current || undefined);
   }, [startMatch, p1Char, p2Char, selectedMapId, gameMode, roomCode, isOnlineHost]);
 
+  // Autostart & URL Room parameter
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const autostart = params.get('autostart');
+    const roomParam = params.get('room') || params.get('roomCode') || params.get('code');
+
+    if (roomParam) {
+      setGameMode('online');
+      setRoomCode(roomParam.toUpperCase().trim());
+      setShowOnlineLobby(true);
+    } else if (autostart === '1') {
+      startMatch('hoang_saigon', 'kendu', 'nguyen_hue', 'ai');
+    }
+  }, [startMatch]);
+
+  // Keyboard Event Listeners
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+        e.preventDefault();
+      }
+
+      if (gameState === 'title' && !showOnlineLobby && (e.code === 'Enter' || e.code === 'Space' || e.code === 'KeyK')) {
+        setGameState('select');
+        return;
+      }
+
+      if (e.code === 'Escape' || e.code === 'KeyP') {
+        if (gameState === 'playing') {
+          setGameState('paused');
+          sound.stopBGM();
+        } else if (gameState === 'paused') {
+          setGameState('playing');
+          sound.startBGM();
+        }
+        return;
+      }
+
+      if (e.code === 'KeyR' && (gameState === 'paused' || gameState === 'gameover')) {
+        restartMatch();
+        return;
+      }
+
+      if (!heldKeys.current.has(e.code)) {
+        justPressedKeys.current.add(e.code);
+      }
+      heldKeys.current.add(e.code);
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      heldKeys.current.delete(e.code);
+    };
+
+    const onBlur = () => {
+      heldKeys.current.clear();
+      justPressedKeys.current.clear();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    document.addEventListener('visibilitychange', onBlur);
+
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+      document.removeEventListener('visibilitychange', onBlur);
+    };
+  }, [gameState, showOnlineLobby, restartMatch]);
+
   useEffect(() => {
     let animId: number;
     let lastTime = performance.now();
@@ -275,8 +275,12 @@ export default function App() {
           up: heldKeys.current.has('KeyW') || mobileInputs.current.up,
           down: heldKeys.current.has('KeyS') || mobileInputs.current.down,
           jump: isJump,
+          dash: heldKeys.current.has('KeyL') || mobileInputs.current.dash,
           charge: heldKeys.current.has('KeyW') || mobileInputs.current.charge,
           guard: heldKeys.current.has('KeyS') || mobileInputs.current.guard,
+          attackJ: heldKeys.current.has('KeyJ') || mobileInputs.current.attackJ,
+          skillU: heldKeys.current.has('KeyU') || mobileInputs.current.skillU,
+          skillI: heldKeys.current.has('KeyI') || mobileInputs.current.skillI,
           jumpPressed: isJumpPressed,
           dashPressed: justPressedKeys.current.has('KeyL') || mobileInputs.current.dashPressed,
           attackJPressed: justPressedKeys.current.has('KeyJ') || mobileInputs.current.attackJPressed,
@@ -294,8 +298,12 @@ export default function App() {
             up: heldKeys.current.has('ArrowUp'),
             down: heldKeys.current.has('ArrowDown'),
             jump: heldKeys.current.has('Numpad0') || heldKeys.current.has('KeyM'),
+            dash: heldKeys.current.has('Numpad3') || heldKeys.current.has('Period'),
             charge: heldKeys.current.has('ArrowUp'),
             guard: heldKeys.current.has('ArrowDown'),
+            attackJ: heldKeys.current.has('Numpad1') || heldKeys.current.has('KeyB'),
+            skillU: heldKeys.current.has('Numpad4') || heldKeys.current.has('KeyH'),
+            skillI: heldKeys.current.has('Numpad5') || heldKeys.current.has('KeyY'),
             jumpPressed: justPressedKeys.current.has('Numpad0') || justPressedKeys.current.has('KeyM'),
             dashPressed: justPressedKeys.current.has('Numpad3') || justPressedKeys.current.has('Period'),
             attackJPressed: justPressedKeys.current.has('Numpad1') || justPressedKeys.current.has('KeyB'),
@@ -362,8 +370,8 @@ export default function App() {
     return () => cancelAnimationFrame(animId);
   }, [gameState, gameMode, settings.showHitboxes, isOnlineHost]);
 
-  const handleMobileInput = (key: keyof KeyInputState, isPressed: boolean) => {
-    mobileInputs.current[key] = isPressed as any;
+  const handleMobileInput = (key: string, isPressed: boolean) => {
+    mobileInputs.current[key] = isPressed;
   };
 
   const handleMobileQuickSkill = (slot: any) => {
@@ -384,13 +392,13 @@ export default function App() {
 
       {gameState === 'title' && !showOnlineLobby && (
         <TitleScreen
-          onSelectMode={(mode, code) => {
+          onSelectMode={(mode: any, code: any) => {
             setGameMode(mode);
             if (code) setRoomCode(code);
             setGameState('select');
           }}
           onOpenSettings={() => setShowSettings(true)}
-          onOpenOnlineLobby={(code) => {
+          onOpenOnlineLobby={(code: any) => {
             if (code) setRoomCode(code);
             setShowOnlineLobby(true);
           }}
@@ -468,7 +476,7 @@ export default function App() {
         <SettingsModal
           settings={settings}
           mode={gameMode}
-          onUpdateSettings={(newSettings) =>
+          onUpdateSettings={(newSettings: any) =>
             setSettings((prev) => ({ ...prev, ...newSettings }))
           }
           onClose={() => setShowSettings(false)}
