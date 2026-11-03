@@ -3,12 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import Peer, { DataConnection } from 'peerjs';
+import Peer from 'peerjs';
 import { KeyInputState, SkillSlot } from './types';
 
 export class NetworkManager {
-  public peer: Peer | null = null;
-  public conn: DataConnection | null = null;
+  public peer: any = null;
+  public conn: any = null;
   public isHost: boolean = false;
   public roomCode: string = '';
 
@@ -24,21 +24,25 @@ export class NetworkManager {
     this.roomCode = code;
     this.isHost = true;
 
-    this.peer = new Peer(`caothudaichien_${code}`);
+    try {
+      this.peer = new Peer(`caothudaichien_${code}`);
 
-    this.peer.on('open', () => {
-      onCreated(code);
-    });
+      this.peer.on('open', () => {
+        onCreated(code);
+      });
 
-    this.peer.on('connection', (c) => {
-      this.conn = c;
-      this.setupConnection();
-    });
+      this.peer.on('connection', (c: any) => {
+        this.conn = c;
+        this.setupConnection();
+      });
 
-    this.peer.on('error', (err) => {
-      console.error('PeerJS Host Error:', err);
-      this.onError?.('Không thể tạo phòng kết nối.');
-    });
+      this.peer.on('error', (err: any) => {
+        console.error('PeerJS Host Error:', err);
+        this.onError?.('Không thể tạo phòng kết nối.');
+      });
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   public joinRoom(code: string, onJoined: () => void) {
@@ -46,18 +50,24 @@ export class NetworkManager {
     this.roomCode = cleanCode;
     this.isHost = false;
 
-    this.peer = new Peer();
+    try {
+      this.peer = new Peer();
 
-    this.peer.on('open', () => {
-      this.conn = this.peer!.connect(`caothudaichien_${cleanCode}`);
-      this.setupConnection();
-      onJoined();
-    });
+      this.peer.on('open', () => {
+        if (this.peer) {
+          this.conn = this.peer.connect(`caothudaichien_${cleanCode}`);
+          this.setupConnection();
+          onJoined();
+        }
+      });
 
-    this.peer.on('error', (err) => {
-      console.error('PeerJS Join Error:', err);
-      this.onError?.('Phòng không tồn tại hoặc lỗi mạng.');
-    });
+      this.peer.on('error', (err: any) => {
+        console.error('PeerJS Join Error:', err);
+        this.onError?.('Phòng không tồn tại hoặc lỗi mạng.');
+      });
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   private setupConnection() {
