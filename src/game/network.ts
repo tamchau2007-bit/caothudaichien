@@ -121,7 +121,6 @@ export class NetworkManager {
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // Đã truyền đồng bộ cả roomId và roomCode cho Backend dễ nhận dạng
     const wsUrl = `${protocol}//${window.location.host}/ws?roomId=${roomId}&roomCode=${roomId}&peerId=${this.peerId}&isHost=${host}&characterId=${charId}`;
 
     try {
@@ -177,7 +176,6 @@ export class NetworkManager {
         this.onPlayerJoined?.(opp.id, opp.characterId);
       }
 
-      // ĐÃ SỬA: Thay participants bằng players để sửa lỗi crash ReferenceError
       this.onRoomUpdate?.(players, this.selectedMapId);
     } else if (packet.type === 'match_started') {
       if (packet.mapId) this.selectedMapId = packet.mapId;
@@ -252,4 +250,20 @@ export class NetworkManager {
       this.socket.send(raw);
     }
     if (this.channel) {
-      this.channel.
+      this.channel.postMessage(data);
+    }
+  }
+
+  public disconnect() {
+    if (this.socket) {
+      this.socket.close();
+      this.socket = null;
+    }
+    if (this.channel) {
+      this.channel.close();
+      this.channel = null;
+    }
+    this.isConnected = false;
+    this.isConnecting = false;
+  }
+}
