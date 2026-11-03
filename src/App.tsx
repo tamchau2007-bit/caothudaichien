@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { CharacterId, GameMode, GameSettings, KeyInputState, MapId } from './game/types';
+import { CharacterId, GameMode, GameSettings, KeyInputState, MapId, SkillSlot } from './game/types';
 import { GameEngine } from './game/engine';
 import { GameRenderer } from './game/renderer';
 import { sound } from './game/sound';
@@ -184,15 +184,20 @@ export default function App() {
         netManagerRef.current = net;
         if (room) setRoomCode(room);
 
-        // Đăng ký nhận Input đối thủ
         net.onOpponentInput = (inputs) => {
           remoteInputsRef.current = inputs;
         };
 
-        // ĐĂNG KÝ NHẬN TỌA ĐỘ VÀ HP THỜI GIAN THỰC TỪ ĐỐI THỦ
         net.onOpponentState = (netState) => {
           if (engineRef.current) {
             engineRef.current.applyOpponentNetState(netState, host);
+          }
+        };
+
+        net.onOpponentSkill = (slot: SkillSlot) => {
+          if (engineRef.current) {
+            const opp = host ? engineRef.current.p2 : engineRef.current.p1;
+            engineRef.current.executeSkill(opp, slot, true);
           }
         };
 
@@ -206,6 +211,16 @@ export default function App() {
       }
 
       const engine = new GameEngine(p1Selected, p2Selected, mode, settings, mapId);
+
+      engine.onSkillTriggered = (playerId, slot) => {
+        if (mode === 'online' && netManagerRef.current) {
+          const isMyFighter = (host && playerId === 'p1') || (!host && playerId === 'p2');
+          if (isMyFighter) {
+            netManagerRef.current.sendSkill(slot);
+          }
+        }
+      };
+
       engine.onMatchEnd = (winner, quote) => {
         setMatchWinner(winner);
         setMatchQuote(quote);
@@ -308,7 +323,6 @@ export default function App() {
         mobileInputs.current.skillUPressed = false;
         mobileInputs.current.skillIPressed = false;
 
-        // BỌC BẪY LỖI TRÁNH SẬP VÒNG LẶP CANVAS
         try {
           if (gameState === 'playing') {
             engine.update(rawDt, p1FinalInputs, p2FinalInputs);
@@ -357,7 +371,8 @@ export default function App() {
 
   const handleMobileQuickSkill = (slot: any) => {
     if (engineRef.current && gameState === 'playing') {
-      engineRef.current.executeSkill(engineRef.current.p1, slot);
+      const localFighter = isOnlineHost ? engineRef.current.p1 : engineRef.current.p2;
+      engineRef.current.executeSkill(localFighter, slot);
     }
   };
 
