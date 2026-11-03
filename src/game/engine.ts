@@ -1255,18 +1255,19 @@ export class GameEngine {
     }
   }
 
-  // --- HÀM ĐỒNG BỘ MẠNG REALTIME (REALTIME SYNC ENGINE) ---
+  // --- HÀM ĐỒNG BỘ MẠNG BỌC THÉP (SAFE REALTIME SYNC ENGINE) ---
   public getLocalNetState(isHost: boolean) {
     const localPlayer = isHost ? this.p1 : this.p2;
+    if (!localPlayer) return null;
     return {
-      x: localPlayer.x,
-      y: localPlayer.y,
-      vx: localPlayer.vx,
-      vy: localPlayer.vy,
-      hp: localPlayer.hp,
-      stamina: localPlayer.stamina,
-      state: localPlayer.state,
-      facing: localPlayer.facing,
+      x: typeof localPlayer.x === 'number' && !isNaN(localPlayer.x) ? localPlayer.x : (isHost ? 300 : 900),
+      y: typeof localPlayer.y === 'number' && !isNaN(localPlayer.y) ? localPlayer.y : 400,
+      vx: typeof localPlayer.vx === 'number' && !isNaN(localPlayer.vx) ? localPlayer.vx : 0,
+      vy: typeof localPlayer.vy === 'number' && !isNaN(localPlayer.vy) ? localPlayer.vy : 0,
+      hp: typeof localPlayer.hp === 'number' && !isNaN(localPlayer.hp) ? localPlayer.hp : 1000,
+      stamina: typeof localPlayer.stamina === 'number' && !isNaN(localPlayer.stamina) ? localPlayer.stamina : 100,
+      state: localPlayer.state || 'IDLE',
+      facing: localPlayer.facing || (isHost ? 1 : -1),
     };
   }
 
@@ -1274,13 +1275,30 @@ export class GameEngine {
     const opponent = isHost ? this.p2 : this.p1;
     if (!opponent || !netState) return;
 
-    opponent.x = netState.x;
-    opponent.y = netState.y;
-    opponent.vx = netState.vx;
-    opponent.vy = netState.vy;
-    opponent.hp = netState.hp;
-    opponent.stamina = netState.stamina;
-    opponent.state = netState.state;
-    opponent.facing = netState.facing;
+    // CHỈ GHI NHẬN KHI TỌA ĐỘ TRUYỀN SANG LÀ SỐ HỢP LỆ (TRÁNH TRƯỜNG HỢP NAN LÀM BIẾN MẤT NHÂN VẬT)
+    if (typeof netState.x === 'number' && !isNaN(netState.x)) {
+      opponent.x = netState.x;
+    }
+    if (typeof netState.y === 'number' && !isNaN(netState.y)) {
+      opponent.y = netState.y;
+    }
+    if (typeof netState.vx === 'number' && !isNaN(netState.vx)) {
+      opponent.vx = netState.vx;
+    }
+    if (typeof netState.vy === 'number' && !isNaN(netState.vy)) {
+      opponent.vy = netState.vy;
+    }
+    if (typeof netState.hp === 'number' && !isNaN(netState.hp)) {
+      opponent.hp = netState.hp;
+    }
+    if (typeof netState.stamina === 'number' && !isNaN(netState.stamina)) {
+      opponent.stamina = netState.stamina;
+    }
+    if (netState.state) {
+      opponent.state = netState.state;
+    }
+    if (netState.facing === 1 || netState.facing === -1) {
+      opponent.facing = netState.facing;
+    }
   }
 }
