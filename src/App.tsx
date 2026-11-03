@@ -308,27 +308,33 @@ export default function App() {
         mobileInputs.current.skillUPressed = false;
         mobileInputs.current.skillIPressed = false;
 
-        if (gameState === 'playing') {
-          engine.update(rawDt, p1FinalInputs, p2FinalInputs);
+        // BỌC BẪY LỖI TRÁNH SẬP VÒNG LẶP CANVAS
+        try {
+          if (gameState === 'playing') {
+            engine.update(rawDt, p1FinalInputs, p2FinalInputs);
 
-          // GỬI STATE MÁY BẢN THÂN SANG CHO ĐỐI THỦ LIÊN TỤC MỖI KHUNG HÌNH (60 FPS)
-          if (gameMode === 'online' && netManagerRef.current) {
-            const myNetState = engine.getLocalNetState(isOnlineHost);
-            netManagerRef.current.sendState(myNetState);
+            if (gameMode === 'online' && netManagerRef.current) {
+              const myNetState = engine.getLocalNetState(isOnlineHost);
+              if (myNetState) {
+                netManagerRef.current.sendState(myNetState);
+              }
+            }
           }
-        }
 
-        renderer.render(
-          engine.p1,
-          engine.p2,
-          engine.hitboxes,
-          engine.projectiles,
-          engine.particles,
-          engine.damageTexts,
-          engine.screenShake,
-          settings.showHitboxes,
-          engine.currentMap
-        );
+          renderer.render(
+            engine.p1,
+            engine.p2,
+            engine.hitboxes,
+            engine.projectiles,
+            engine.particles,
+            engine.damageTexts,
+            engine.screenShake,
+            settings.showHitboxes,
+            engine.currentMap
+          );
+        } catch (err) {
+          console.warn('Game Loop Render Exception:', err);
+        }
 
         hudThrottleCounter++;
         if (hudThrottleCounter % 4 === 0) {
