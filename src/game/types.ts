@@ -7,127 +7,92 @@ export type CharacterId =
   | 'hoang_saigon'
   | 'kendu'
   | 'le_dao'
-  | 'khoa_pug'
-  | 'nhat_ban'
   | 'hung_chimbay'
+  | 'nhat_ban'
   | 'hoang_xitrum'
+  | 'khoa_pug'
   | 'bao_ren';
 
-export type MapId = 'loi_dai' | 'nguyen_hue' | 'chau_phi' | 'nhat_ban_sakura';
+export type GameMode = 'ai' | 'training' | 'local2p' | 'online';
 
-export interface StagePlatform {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  label?: string;
+export type SkillSlot = 'J' | 'U' | 'I' | 'WU' | 'WI' | 'SU' | 'SI' | 'WJ' | 'SJ';
+
+export type MapId = 'loi_dai' | 'nguyen_hue' | 'ben_thanh' | string;
+
+export interface KeyInputState {
+  left: boolean;
+  right: boolean;
+  up: boolean;
+  down: boolean;
+  jump: boolean;
+  charge: boolean;
+  guard: boolean;
+  dash?: boolean;
+  attackJ?: boolean;
+  skillU?: boolean;
+  skillI?: boolean;
+  jumpPressed?: boolean;
+  dashPressed?: boolean;
+  attackJPressed?: boolean;
+  skillUPressed?: boolean;
+  skillIPressed?: boolean;
 }
 
-export interface MapData {
-  id: MapId;
-  name: string;
-  vietnameseName: string;
-  themeDesc: string;
-  description?: string;
-  bgColor: string;
-  floorY: number;
-  platforms: StagePlatform[];
+export interface GameSettings {
+  screenShake: boolean;
+  vfxParticles: boolean;
+  fpsLimit: number;
+  masterVolume: number;
+  bgmVolume: number;
+  sfxVolume: number;
+  bufferDelay: number;
+  showHitboxes: boolean;
+  infiniteStamina: boolean;
+  dummyBehavior: 'stand' | 'jump' | 'guard' | 'crouch';
 }
-
-export type FighterState =
-  | 'IDLE'
-  | 'WALK'
-  | 'JUMP'
-  | 'FALL'
-  | 'DASH'
-  | 'CHARGE_W'
-  | 'GUARD'
-  | 'GUARD_BROKEN'
-  | 'ATTACK'
-  | 'HIT_STUN'
-  | 'KNOCKED_DOWN'
-  | 'DEAD';
-
-export type SkillSlot =
-  | 'J'     // Đánh thường (0 Sta) - Combo 3 đòn J1, J2, J3
-  | 'U'     // Chiêu 1 (10 Sta)
-  | 'I'     // Chiêu 2 (15 Sta)
-  | 'SU'    // Chiêu 3: S + U (20 Sta)
-  | 'SI'    // Chiêu 4: S + I (20 Sta)
-  | 'WU'    // Chiêu 5: W + U (25 Sta)
-  | 'WI'    // Chiêu 6: W + I (30 Sta)
-  | 'SJ'    // Chiêu 7: S + J (35 Sta)
-  | 'WJ';   // Chiêu 8: W + J - Tuyệt Chiêu Tối Thượng (60 Sta)
 
 export interface SkillDefinition {
   id: SkillSlot;
   name: string;
-  vietnameseName: string;
-  typeDesc: string;
   staminaCost: number;
   damage: number;
+  knockback: { x: number; y: number };
   startupFrames: number;
   activeFrames: number;
   recoveryFrames: number;
-  knockback: { x: number; y: number };
   hitstop: number;
-  description: string;
   rangeX: number;
   rangeY: number;
-  isSuperArmor?: boolean;
-  isUnblockable?: boolean;
-  isGrab?: boolean;
   isProjectile?: boolean;
   isTrap?: boolean;
-  isBuff?: boolean;
   isCounter?: boolean;
-  effectType?:
-    | 'reflect'
-    | 'suction'
-    | 'crit_buff'
-    | 'trip'
-    | 'bleed'
-    | 'confuse'
-    | 'slow'
-    | 'trap_hold'
-    | 'spring_bounce'
-    | 'burger_drop'
-    | 'speaker_pulse'
-    | 'ban_tho'
-    | 'skibidi_giant';
+  isUnblockable?: boolean;
+  isGrab?: boolean;
+  effectType?: 'trip' | 'suction' | 'freeze' | 'burn';
 }
 
 export interface CharacterData {
   id: CharacterId;
   name: string;
   title: string;
-  archetype: string;
+  avatar: string;
   maxHp: number;
   maxStamina: number;
-  weight: number;
   speed: number;
-  jumpCount: number;
-  jumpForce: number;
-  hasWallCling?: boolean;
-  hasGliding?: boolean;
-  dashType: string;
   dashSpeed: number;
   dashDuration: number;
-  dashHasSuperArmor?: boolean;
-  dashHasInvul?: boolean;
-  dashLeavesHazard?: boolean;
-  passiveName: string;
-  passiveDesc: string;
-  gimmickName: string;
-  gimmickDesc: string;
-  winQuote: string;
+  jumpForce: number;
+  jumpCount: number;
   colorTheme: {
     primary: string;
     secondary: string;
-    aura: string;
     spark: string;
   };
   skills: Record<SkillSlot, SkillDefinition>;
+  winQuote: string;
+  dashHasInvul?: boolean;
+  dashHasSuperArmor?: boolean;
+  hasGliding?: boolean;
 }
 
 export interface Hitbox {
@@ -146,16 +111,9 @@ export interface Hitbox {
   isGrab?: boolean;
   isHeavy?: boolean;
   sparkColor: string;
-  soundType?: 'light' | 'heavy' | 'slash' | 'grab' | 'slam' | 'magic' | 'bass' | 'dj' | 'flush';
+  soundType: 'light' | 'heavy' | 'slash';
   activeTicks: number;
   maxTicks: number;
-}
-
-export interface Hurtbox {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
 }
 
 export interface Projectile {
@@ -173,28 +131,67 @@ export interface Projectile {
   damage: number;
   knockbackX: number;
   knockbackY: number;
-  isTrap?: boolean;
-  isBoomerang?: boolean;
-  isHeldReturn?: boolean;
-  isGiantUlti?: boolean;
+  color: string;
+  name: string;
   isPickupBurger?: boolean;
   isSpeakerPulse?: boolean;
-  isFigureTrap?: boolean;
-  isBanTho?: boolean;
   isSpringBounce?: boolean;
-  isCrossbowArrow?: boolean;
+  isFigureTrap?: boolean;
+  isPillowRocket?: boolean;
   isBoneSpikes?: boolean;
+  isCrossbowArrow?: boolean;
   isShuriken?: boolean;
   isTornado?: boolean;
   isFeatherTrap?: boolean;
-  isPillowRocket?: boolean;
   isCatPoop?: boolean;
   isDoraemon?: boolean;
   isSonicExe?: boolean;
   isMiniSkibidi?: boolean;
+  isBanTho?: boolean;
+  isGiantUlti?: boolean;
+}
+
+export interface Particle {
+  active: boolean;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
   color: string;
+  size: number;
+  alpha: number;
+  life: number;
+  maxLife: number;
+  type: string;
+}
+
+export interface DamageText {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+  alpha: number;
+  life: number;
+  maxLife: number;
+  isCritical?: boolean;
+}
+
+export interface PlatformData {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  name?: string;
+  isOneWay?: boolean;
+}
+
+export interface MapData {
+  id: string;
   name: string;
-  extraState?: any;
+  bgGradient: string[];
+  floorColor: string;
+  platforms: PlatformData[];
 }
 
 export interface PetEntity {
@@ -204,7 +201,7 @@ export interface PetEntity {
   y: number;
   vx: number;
   facing: 1 | -1;
-  state: 'follow' | 'attack' | 'bowl_slide';
+  state: 'follow' | 'bowl_slide';
   timer: number;
 }
 
@@ -220,21 +217,28 @@ export interface FighterEntity {
   facing: 1 | -1;
   hp: number;
   stamina: number;
-  state: FighterState;
+  state:
+    | 'IDLE'
+    | 'WALK'
+    | 'JUMP'
+    | 'FALL'
+    | 'DASH'
+    | 'GUARD'
+    | 'GUARD_BROKEN'
+    | 'ATTACK'
+    | 'CHARGE_W'
+    | 'HIT_STUN'
+    | 'DEAD';
   stateTime: number;
   currentSkill: SkillDefinition | null;
   skillTick: number;
   jumpsLeft: number;
   isGrounded: boolean;
   isWallClinging: boolean;
-  currentPlatform: StagePlatform | null;
+  currentPlatform: PlatformData | null;
   droppingPlatformTimer: number;
-
-  // Normal Attack J Combo Chain (J1 -> J2 -> J3)
-  normalComboStep: 0 | 1 | 2; // 0 = J1, 1 = J2, 2 = J3 finisher
-  normalComboTimer: number;   // Window to press J next
-
-  // Status timers
+  normalComboStep: number;
+  normalComboTimer: number;
   hitStunTime: number;
   guardBreakTime: number;
   invulnerableTime: number;
@@ -246,117 +250,25 @@ export interface FighterEntity {
   trappedTime: number;
   stealthTime: number;
   hitFlashTime: number;
-
-  // Gimmick state trackers
-  // 1. Hoàng Sài Gòn
-  hoangScaleBonus: number; // 1.0 to 1.6x size
-  hoangArmorBonus: number; // +15% per tier
-  hoangKnockbackBonus: number; // +30% per tier
+  hoangScaleBonus: number;
+  hoangArmorBonus: number;
+  hoangKnockbackBonus: number;
   hoangDamageAbsorbedSinceLastTier: number;
-
-  // 2. KenDu Beatbox Flow
-  beatboxFlowWindow: number; // rhythm timer
+  beatboxFlowWindow: number;
   beatboxFlowActive: boolean;
-
-  // 3. Lê Đào 12 Xương Sườn
-  ribBonesAvailable: number; // 0 to 12 ribs
+  ribBonesAvailable: number;
   maxHpPenalty: number;
-
-  // 4. Khoa Pug Wibu Stack
   wibuStacks: number;
-
-  // 5. Nhật Bản Móng Độc
   poisonClawStacks: number;
   shadowClonesCount: number;
-
-  // 6. Hùng Chim Bay Air Drift
-  airDriftCharge: number; // 0 to 100%
-
-  // 7. Hoàng Xì Trum Pet Mèo
-  petCat?: PetEntity;
+  airDriftCharge: number;
   kickRangeBonusTime: number;
   nextHitCrit: boolean;
   attackFrame: number;
   attackDuration: number;
-
-  // Stats tracking for match
   comboHits: number;
   comboDamage: number;
   comboTimer: number;
   totalDamageDealt: number;
-}
-
-export interface Particle {
-  active: boolean;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  color: string;
-  size: number;
-  alpha: number;
-  life: number;
-  maxLife: number;
-  type:
-    | 'spark'
-    | 'smoke'
-    | 'shockwave'
-    | 'ring'
-    | 'waifu_heart'
-    | 'glitch_line'
-    | 'feather'
-    | 'bone'
-    | 'soundwave'
-    | 'sakura'
-    | 'rock_rubble';
-}
-
-export interface DamageText {
-  id: string;
-  x: number;
-  y: number;
-  vy: number;
-  text: string;
-  color: string;
-  size: number;
-  life: number;
-  maxLife: number;
-  alpha?: number;
-  isCrit?: boolean;
-}
-
-export interface KeyInputState {
-  left: boolean;
-  right: boolean;
-  up: boolean;
-  down: boolean;
-  jump: boolean;      // KeyK
-  dash: boolean;      // KeyL
-  charge: boolean;    // KeyW
-  guard: boolean;     // KeyS
-  attackJ: boolean;   // KeyJ
-  skillU: boolean;    // KeyU
-  skillI: boolean;    // KeyI
-
-  // Edge triggers
-  jumpPressed?: boolean;
-  dashPressed?: boolean;
-  attackJPressed?: boolean;
-  skillUPressed?: boolean;
-  skillIPressed?: boolean;
-}
-
-export type GameMode = 'ai' | 'training' | 'local2p' | 'online';
-
-export interface GameSettings {
-  screenShake: boolean;
-  vfxParticles: boolean;
-  fpsLimit: 60 | 120 | 0;
-  masterVolume: number;
-  bgmVolume: number;
-  sfxVolume: number;
-  bufferDelay: number;
-  showHitboxes: boolean;
-  infiniteStamina: boolean;
-  dummyBehavior: 'stand' | 'guard' | 'jump' | 'counter';
+  petCat?: PetEntity;
 }
