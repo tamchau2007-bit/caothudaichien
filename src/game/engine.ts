@@ -580,4 +580,707 @@ export class GameEngine {
 
     const boxW = skill.rangeX + extraReach;
     const boxH = skill.rangeY;
-    const boxX
+    const boxX = facing === 1 ? f.x + 10 : f.x - 10 - boxW;
+    const boxY = f.y - boxH - 10;
+
+    this.createHitbox(f, {
+      id: `${f.playerId}_${skill.id}_${Date.now()}`,
+      attackerId: f.playerId,
+      x: boxX,
+      y: boxY,
+      w: boxW,
+      h: boxH,
+      damage: dmg,
+      knockbackX: kx,
+      knockbackY: ky,
+      hitstop: skill.hitstop,
+      isUnblockable: skill.isUnblockable,
+      isTrip: skill.effectType === 'trip',
+      isGrab: skill.isGrab,
+      isHeavy: dmg >= 70,
+      sparkColor: f.character.colorTheme.spark,
+      soundType: dmg >= 70 ? 'heavy' : 'light',
+      activeTicks: skill.activeFrames,
+      maxTicks: skill.activeFrames,
+    });
+  }
+
+  private spawnSkillObject(f: FighterEntity, skill: SkillDefinition) {
+    const facing = f.facing;
+    const charId = f.character.id;
+
+    if (charId === 'hoang_saigon' && skill.id === 'I') {
+      this.projectiles.push({
+        id: `burger_${Date.now()}`,
+        ownerId: f.playerId,
+        characterId: charId,
+        skillId: 'I',
+        x: f.x + facing * 80,
+        y: STAGE_CONFIG.floorY,
+        vx: 0,
+        vy: 0,
+        w: 38,
+        h: 26,
+        lifetime: 8.0,
+        damage: 40,
+        knockbackX: 4,
+        knockbackY: -2,
+        isPickupBurger: true,
+        color: '#f59e0b',
+        name: 'Burger King Hấp Lực',
+      });
+    } else if (charId === 'kendu' && skill.id === 'SI') {
+      this.projectiles.push({
+        id: `speaker_${Date.now()}`,
+        ownerId: f.playerId,
+        characterId: charId,
+        skillId: 'SI',
+        x: f.x + facing * 60,
+        y: STAGE_CONFIG.floorY,
+        vx: 0,
+        vy: 0,
+        w: 42,
+        h: 48,
+        lifetime: 7.0,
+        damage: 50,
+        knockbackX: 8,
+        knockbackY: -2,
+        isSpeakerPulse: true,
+        color: '#0284c7',
+        name: 'Loa Thùng Thạch Cầu',
+      });
+    } else if (charId === 'khoa_pug' && skill.id === 'U') {
+      this.projectiles.push({
+        id: `spring_${Date.now()}`,
+        ownerId: f.playerId,
+        characterId: charId,
+        skillId: 'U',
+        x: f.x + facing * 70,
+        y: STAGE_CONFIG.floorY,
+        vx: 0,
+        vy: 0,
+        w: 60,
+        h: 20,
+        lifetime: 5.5,
+        damage: 25,
+        knockbackX: 1,
+        knockbackY: -22,
+        isSpringBounce: true,
+        color: '#ec4899',
+        name: 'Gối Đệm Nảy Tưng',
+      });
+    } else if (charId === 'khoa_pug' && skill.id === 'SI') {
+      this.projectiles.push({
+        id: `figure_${Date.now()}`,
+        ownerId: f.playerId,
+        characterId: charId,
+        skillId: 'SI',
+        x: f.x + facing * 75,
+        y: STAGE_CONFIG.floorY,
+        vx: 0,
+        vy: 0,
+        w: 36,
+        h: 42,
+        lifetime: 6.0,
+        damage: 45,
+        knockbackX: 1,
+        knockbackY: -1,
+        isFigureTrap: true,
+        color: '#f472b6',
+        name: 'Figure Bẫy Anime',
+      });
+    } else if (charId === 'khoa_pug' && skill.id === 'SJ') {
+      this.projectiles.push({
+        id: `pillow_rocket_${Date.now()}`,
+        ownerId: f.playerId,
+        characterId: charId,
+        skillId: 'SJ',
+        x: f.x + facing * 40,
+        y: f.y - 50,
+        vx: facing * 15,
+        vy: 0,
+        w: 50,
+        h: 28,
+        lifetime: 2.2,
+        damage: 86,
+        knockbackX: 11,
+        knockbackY: -5,
+        isPillowRocket: true,
+        color: '#ff4081',
+        name: 'Tên Lửa Gối Ôm',
+      });
+    } else if (charId === 'le_dao' && skill.id === 'SI') {
+      for (let s = 1; s <= 4; s++) {
+        this.projectiles.push({
+          id: `bone_spike_${s}_${Date.now()}`,
+          ownerId: f.playerId,
+          characterId: charId,
+          skillId: 'SI',
+          x: f.x + facing * (s * 55),
+          y: STAGE_CONFIG.floorY,
+          vx: 0,
+          vy: 0,
+          w: 40,
+          h: 45,
+          lifetime: 3.5,
+          damage: 58,
+          knockbackX: 3,
+          knockbackY: -11,
+          isBoneSpikes: true,
+          color: '#fbbf24',
+          name: 'Rừng Gai Xương',
+        });
+      }
+    } else if (charId === 'le_dao' && skill.id === 'WI') {
+      for (let a = -1; a <= 1; a++) {
+        this.projectiles.push({
+          id: `bone_arrow_${a}_${Date.now()}`,
+          ownerId: f.playerId,
+          characterId: charId,
+          skillId: 'WI',
+          x: f.x + facing * 40,
+          y: f.y - 55 + a * 15,
+          vx: facing * 14,
+          vy: a * 1.5,
+          w: 36,
+          h: 12,
+          lifetime: 1.8,
+          damage: 65,
+          knockbackX: 9,
+          knockbackY: -3,
+          isCrossbowArrow: true,
+          color: '#f59e0b',
+          name: 'Tên Xương Hoàng Kim',
+        });
+      }
+    } else if (charId === 'nhat_ban' && skill.id === 'WI') {
+      for (let s = -1.5; s <= 1.5; s += 1) {
+        this.projectiles.push({
+          id: `shuriken_${s}_${Date.now()}`,
+          ownerId: f.playerId,
+          characterId: charId,
+          skillId: 'WI',
+          x: f.x + facing * 35,
+          y: f.y - 50 + s * 14,
+          vx: facing * 13,
+          vy: s * 2,
+          w: 24,
+          h: 24,
+          lifetime: 1.6,
+          damage: 55,
+          knockbackX: 6,
+          knockbackY: -2,
+          isShuriken: true,
+          color: '#c084fc',
+          name: 'Shuriken Vuốt Khí',
+        });
+      }
+    } else if (charId === 'hung_chimbay' && skill.id === 'SI') {
+      this.projectiles.push({
+        id: `tornado_${Date.now()}`,
+        ownerId: f.playerId,
+        characterId: charId,
+        skillId: 'SI',
+        x: f.x + facing * 45,
+        y: STAGE_CONFIG.floorY,
+        vx: facing * 8,
+        vy: 0,
+        w: 55,
+        h: 90,
+        lifetime: 2.8,
+        damage: 60,
+        knockbackX: 7,
+        knockbackY: -17,
+        isTornado: true,
+        color: '#22c55e',
+        name: 'Cơn Lốc Cánh Chim',
+      });
+    } else if (charId === 'hung_chimbay' && skill.id === 'WI') {
+      for (let lf = 1; lf <= 5; lf++) {
+        this.projectiles.push({
+          id: `feather_${lf}_${Date.now()}`,
+          ownerId: f.playerId,
+          characterId: charId,
+          skillId: 'WI',
+          x: f.x + facing * (lf * 38),
+          y: STAGE_CONFIG.floorY,
+          vx: 0,
+          vy: 0,
+          w: 25,
+          h: 30,
+          lifetime: 5.0,
+          damage: 50,
+          knockbackX: 3,
+          knockbackY: -5,
+          isFeatherTrap: true,
+          color: '#4ade80',
+          name: 'Bẫy Lông Gai',
+        });
+      }
+    } else if (charId === 'hoang_xitrum' && skill.id === 'SI') {
+      if (f.petCat) {
+        f.petCat.state = 'bowl_slide';
+        f.petCat.vx = f.facing * 15;
+        f.petCat.timer = 1.3;
+        this.addDamageText(f.petCat.x, f.petCat.y - 40, 'MÈO SÚT BOWLING!', '#ea580c', true);
+      }
+    } else if (charId === 'hoang_xitrum' && skill.id === 'WI') {
+      this.projectiles.push({
+        id: `cat_poop_${Date.now()}`,
+        ownerId: f.playerId,
+        characterId: charId,
+        skillId: 'WI',
+        x: f.x + facing * 60,
+        y: STAGE_CONFIG.floorY,
+        vx: 0,
+        vy: 0,
+        w: 28,
+        h: 18,
+        lifetime: 6.0,
+        damage: 35,
+        knockbackX: 4,
+        knockbackY: -2,
+        isCatPoop: true,
+        color: '#78350f',
+        name: 'Bẫy Phân Mèo',
+      });
+    } else if (charId === 'bao_ren' && skill.id === 'U') {
+      this.projectiles.push({
+        id: `doraemon_${Date.now()}`,
+        ownerId: f.playerId,
+        characterId: charId,
+        skillId: 'U',
+        x: f.x + facing * 45,
+        y: f.y - 45,
+        vx: facing * 10,
+        vy: 0,
+        w: 50,
+        h: 50,
+        lifetime: 2.2,
+        damage: 62,
+        knockbackX: 8,
+        knockbackY: -4,
+        isDoraemon: true,
+        color: '#1e3a8a',
+        name: 'Doraemon.exe',
+      });
+    } else if (charId === 'bao_ren' && skill.id === 'I') {
+      this.projectiles.push({
+        id: `sonic_${Date.now()}`,
+        ownerId: f.playerId,
+        characterId: charId,
+        skillId: 'I',
+        x: f.x + facing * 45,
+        y: STAGE_CONFIG.floorY,
+        vx: facing * 16,
+        vy: 0,
+        w: 48,
+        h: 42,
+        lifetime: 1.8,
+        damage: 75,
+        knockbackX: 12,
+        knockbackY: -5,
+        isSonicExe: true,
+        color: '#991b1b',
+        name: 'Sonic.exe',
+      });
+    } else if (charId === 'bao_ren' && skill.id === 'SI') {
+      this.projectiles.push({
+        id: `skibidi_mini_${Date.now()}`,
+        ownerId: f.playerId,
+        characterId: charId,
+        skillId: 'SI',
+        x: f.x + facing * 40,
+        y: STAGE_CONFIG.floorY,
+        vx: facing * 5,
+        vy: 0,
+        w: 38,
+        h: 38,
+        lifetime: 4.5,
+        damage: 55,
+        knockbackX: 2,
+        knockbackY: -2,
+        isMiniSkibidi: true,
+        color: '#b91c1c',
+        name: 'Skibidi Mini Cắn Chân',
+      });
+    } else if (charId === 'bao_ren' && skill.id === 'SJ') {
+      this.projectiles.push({
+        id: `ban_tho_${Date.now()}`,
+        ownerId: f.playerId,
+        characterId: charId,
+        skillId: 'SJ',
+        x: f.x + facing * 40,
+        y: STAGE_CONFIG.floorY,
+        vx: facing * 12,
+        vy: 0,
+        w: 60,
+        h: 45,
+        lifetime: 2.0,
+        damage: 92,
+        knockbackX: 13,
+        knockbackY: -6,
+        isBanTho: true,
+        color: '#7f1d1d',
+        name: 'Bàn Thờ Phóng Tới',
+      });
+    } else if (charId === 'bao_ren' && skill.id === 'WJ') {
+      this.projectiles.push({
+        id: `giant_skibidi_${Date.now()}`,
+        ownerId: f.playerId,
+        characterId: charId,
+        skillId: 'WJ',
+        x: f.x + facing * 120,
+        y: STAGE_CONFIG.floorY,
+        vx: 0,
+        vy: 0,
+        w: 140,
+        h: 140,
+        lifetime: 2.2,
+        damage: 215,
+        knockbackX: 18,
+        knockbackY: -18,
+        isGiantUlti: true,
+        color: '#d32f2f',
+        name: 'Skibidi Toilet Bự',
+      });
+    } else {
+      this.projectiles.push({
+        id: `proj_${Date.now()}`,
+        ownerId: f.playerId,
+        characterId: charId,
+        skillId: skill.id,
+        x: f.x + facing * 50,
+        y: f.y - 45,
+        vx: facing * 11,
+        vy: 0,
+        w: 35,
+        h: 30,
+        lifetime: 2.0,
+        damage: skill.damage,
+        knockbackX: skill.knockback.x,
+        knockbackY: skill.knockback.y,
+        color: f.character.colorTheme.primary,
+        name: skill.name,
+      });
+    }
+  }
+
+  private updatePet(f: FighterEntity, dt: number) {
+    if (!f.petCat) return;
+    const cat = f.petCat;
+
+    if (cat.state === 'bowl_slide') {
+      cat.x += cat.vx;
+      cat.timer -= dt;
+      const opponent = f.playerId === 'p1' ? this.p2 : this.p1;
+      if (Math.abs(cat.x - opponent.x) < 40 && opponent.isGrounded) {
+        opponent.vx = cat.facing * 10;
+        opponent.state = 'HIT_STUN';
+        opponent.hitStunTime = 0.5;
+        this.addDamageText(opponent.x, opponent.y - 60, 'MÈO QUÉT NGÃ!', '#ea580c');
+        cat.state = 'follow';
+      }
+      if (cat.timer <= 0) cat.state = 'follow';
+    } else {
+      const targetX = f.x - f.facing * 45;
+      cat.x += (targetX - cat.x) * 0.08;
+      cat.facing = f.facing;
+    }
+  }
+
+  private updateProjectiles(dt: number) {
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const p = this.projectiles[i];
+      p.lifetime -= dt;
+      p.x += p.vx;
+      p.y += p.vy;
+
+      if (p.lifetime <= 0) {
+        this.projectiles.splice(i, 1);
+        continue;
+      }
+
+      const target = p.ownerId === 'p1' ? this.p2 : this.p1;
+      const owner = p.ownerId === 'p1' ? this.p1 : this.p2;
+
+      if (p.isPickupBurger) {
+        if (Math.abs(owner.x - p.x) < 40 && owner.isGrounded && owner.character.id === 'hoang_saigon') {
+          owner.hp = Math.min(owner.character.maxHp, owner.hp + 150);
+          owner.hoangScaleBonus = Math.min(1.5, owner.hoangScaleBonus + 0.1);
+          this.addDamageText(owner.x, owner.y - 70, '+150 HP (BURGER KING)!', '#f59e0b', true);
+          this.projectiles.splice(i, 1);
+          continue;
+        }
+        if (Math.abs(target.x - p.x) < 40 && target.isGrounded) {
+          target.vx = target.facing * -8;
+          target.state = 'HIT_STUN';
+          target.hitStunTime = 0.6;
+          this.addDamageText(target.x, target.y - 60, 'TRÚNG BURGER!', '#ef4444');
+          this.projectiles.splice(i, 1);
+          continue;
+        }
+      } else {
+        const pBox = { x: p.x - p.w / 2, y: p.y - p.h, w: p.w, h: p.h };
+        const hurtbox = getFighterHurtbox(target);
+        if (checkAABBCollision(pBox, hurtbox)) {
+          const dmg = calculateDamage(p.damage, target);
+          target.hp = Math.max(0, target.hp - dmg);
+          target.state = 'HIT_STUN';
+          target.hitStunTime = 0.4;
+          target.vx = target.facing === owner.facing ? owner.facing * p.knockbackX : -owner.facing * p.knockbackX;
+          target.vy = p.knockbackY;
+
+          this.addDamageText(target.x, target.y - 60, `-${dmg}`, '#ef4444');
+          this.spawnSparks(p.x, p.y, p.color, 10);
+          sound.playHit('heavy');
+
+          this.projectiles.splice(i, 1);
+        }
+      }
+    }
+  }
+
+  private processHitboxes(dt: number) {
+    for (let i = this.hitboxes.length - 1; i >= 0; i--) {
+      const hb = this.hitboxes[i];
+      hb.activeTicks--;
+
+      const attacker = hb.attackerId === 'p1' ? this.p1 : this.p2;
+      const defender = hb.attackerId === 'p1' ? this.p2 : this.p1;
+
+      if (defender.state !== 'DEAD' && defender.invulnerableTime <= 0) {
+        const hurtbox = getFighterHurtbox(defender);
+        if (checkAABBCollision(hb, hurtbox)) {
+          const isGuarding = defender.state === 'GUARD' && defender.facing !== attacker.facing;
+          if (isGuarding && !hb.isUnblockable) {
+            defender.stamina -= hb.damage * 0.4;
+            if (defender.stamina <= 0) {
+              defender.state = 'GUARD_BROKEN';
+              defender.guardBreakTime = 1.5;
+              this.addDamageText(defender.x, defender.y - 70, 'BỂ GIÁP!', '#ef4444', true);
+            } else {
+              this.addDamageText(defender.x, defender.y - 60, 'ĐÃ ĐỠ!', '#3b82f6');
+            }
+          } else {
+            const dmg = calculateDamage(hb.damage, defender);
+            defender.hp = Math.max(0, defender.hp - dmg);
+            defender.state = 'HIT_STUN';
+            defender.hitStunTime = 0.35;
+            defender.vx = attacker.facing * hb.knockbackX;
+            defender.vy = hb.knockbackY;
+
+            this.hitstopTimer = hb.hitstop;
+            this.shakeTrauma = Math.min(1.0, this.shakeTrauma + 0.3);
+            this.addDamageText(defender.x, defender.y - 70, `-${dmg}`, hb.isHeavy ? '#f59e0b' : '#ef4444', hb.isHeavy);
+            this.spawnSparks(defender.x, defender.y - 50, hb.sparkColor, 12);
+            sound.playHit(hb.soundType);
+          }
+          this.hitboxes.splice(i, 1);
+          continue;
+        }
+      }
+
+      if (hb.activeTicks <= 0) {
+        this.hitboxes.splice(i, 1);
+      }
+    }
+  }
+
+  private applyPhysics(f: FighterEntity, dt: number) {
+    f.x += f.vx;
+    f.y += f.vy;
+
+    const mapPlatforms = this.currentMap.platforms || [];
+    const checkResult = checkGroundAndPlatformsRaycast(f, mapPlatforms, STAGE_CONFIG.floorY);
+    f.isGrounded = checkResult.isGrounded;
+    f.currentPlatform = checkResult.platform;
+    if (f.isGrounded) {
+      f.vy = 0;
+      f.y = checkResult.groundY;
+      f.jumpsLeft = f.character.jumpCount;
+    } else {
+      f.vy += STAGE_CONFIG.gravity;
+    }
+
+    checkWallBounce(f, STAGE_CONFIG.minX, STAGE_CONFIG.maxX);
+  }
+
+  private updateFacing() {
+    if (this.p1.state === 'IDLE' || this.p1.state === 'WALK') {
+      this.p1.facing = this.p1.x <= this.p2.x ? 1 : -1;
+    }
+    if (this.p2.state === 'IDLE' || this.p2.state === 'WALK') {
+      this.p2.facing = this.p2.x <= this.p1.x ? 1 : -1;
+    }
+  }
+
+  private createHitbox(f: FighterEntity, hbData: Hitbox) {
+    this.hitboxes.push(hbData);
+  }
+
+  private spawnSparks(x: number, y: number, color: string, count: number) {
+    let spawned = 0;
+    for (const p of this.particles) {
+      if (!p.active) {
+        p.active = true;
+        p.x = x;
+        p.y = y;
+        p.vx = (Math.random() * 2 - 1) * 8;
+        p.vy = (Math.random() * 2 - 1) * 8;
+        p.color = color;
+        p.size = Math.random() * 4 + 2;
+        p.alpha = 1;
+        p.life = 0;
+        p.maxLife = Math.random() * 0.3 + 0.15;
+        p.type = 'spark';
+        spawned++;
+        if (spawned >= count) break;
+      }
+    }
+  }
+
+  private addDamageText(x: number, y: number, text: string, color: string, isCritical: boolean = false) {
+    this.damageTexts.push({
+      id: `dmg_${Date.now()}_${Math.random()}`,
+      x,
+      y,
+      text,
+      color,
+      alpha: 1,
+      life: 0,
+      maxLife: 0.8,
+      isCritical,
+    });
+  }
+
+  private updateParticles(dt: number) {
+    for (const p of this.particles) {
+      if (p.active) {
+        p.life += dt;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.alpha = 1 - p.life / p.maxLife;
+        if (p.life >= p.maxLife) p.active = false;
+      }
+    }
+  }
+
+  private updateDamageTexts(dt: number) {
+    for (let i = this.damageTexts.length - 1; i >= 0; i--) {
+      const dtObj = this.damageTexts[i];
+      dtObj.life += dt;
+      dtObj.y -= 1.2;
+      dtObj.alpha = 1 - dtObj.life / dtObj.maxLife;
+      if (dtObj.life >= dtObj.maxLife) {
+        this.damageTexts.splice(i, 1);
+      }
+    }
+  }
+
+  private getDefaultInputs(): KeyInputState {
+    return {
+      left: false,
+      right: false,
+      up: false,
+      down: false,
+      jump: false,
+      jumpPressed: false,
+      guard: false,
+      charge: false,
+      attackJPressed: false,
+      skillUPressed: false,
+      skillIPressed: false,
+      dashPressed: false,
+    };
+  }
+
+  private computeAiInputs(f: FighterEntity, opp: FighterEntity, dt: number): KeyInputState {
+    const inputs = this.getDefaultInputs();
+    const dist = opp.x - f.x;
+    const absDist = Math.abs(dist);
+
+    if (absDist > 120) {
+      if (dist > 0) inputs.right = true;
+      else inputs.left = true;
+    } else {
+      inputs.attackJPressed = Math.random() < 0.08;
+      if (Math.random() < 0.03) inputs.skillUPressed = true;
+      if (Math.random() < 0.02) inputs.skillIPressed = true;
+    }
+    return inputs;
+  }
+
+  private computeTrainingDummyInputs(f: FighterEntity, opp: FighterEntity): KeyInputState {
+    return this.getDefaultInputs();
+  }
+
+  private handleTimeOut() {
+    this.isMatchOver = true;
+    if (this.p1.hp > this.p2.hp) {
+      this.winner = 'p1';
+      this.winQuote = `${this.p1.character.name}: Hết giờ! Chiến thắng thuyết phục!`;
+    } else if (this.p2.hp > this.p1.hp) {
+      this.winner = 'p2';
+      this.winQuote = `${this.p2.character.name}: Hết giờ! Hơn máu là thắng!`;
+    } else {
+      this.winner = 'draw';
+      this.winQuote = 'Hòa nhau! Cả hai cao thủ đều ngang tài ngang sức!';
+    }
+    this.onMatchEnd?.(this.winner, this.winQuote);
+  }
+
+  private checkMatchEnd() {
+    if (this.isMatchOver) return;
+
+    if (this.p1.hp <= 0 && this.p2.hp <= 0) {
+      this.p1.state = 'DEAD';
+      this.p2.state = 'DEAD';
+      this.isMatchOver = true;
+      this.winner = 'draw';
+      this.winQuote = 'Đồng quy vu tận! Hai cao thủ cùng gục ngã!';
+      this.onMatchEnd?.('draw', this.winQuote);
+    } else if (this.p1.hp <= 0) {
+      this.p1.state = 'DEAD';
+      this.isMatchOver = true;
+      this.winner = 'p2';
+      this.winQuote = `${this.p2.character.name}: ${this.p2.character.winQuote}`;
+      this.onMatchEnd?.('p2', this.winQuote);
+    } else if (this.p2.hp <= 0) {
+      this.p2.state = 'DEAD';
+      this.isMatchOver = true;
+      this.winner = 'p1';
+      this.winQuote = `${this.p1.character.name}: ${this.p1.character.winQuote}`;
+      this.onMatchEnd?.('p1', this.winQuote);
+    }
+  }
+
+  // --- HÀM ĐỒNG BỘ MẠNG REALTIME (REALTIME SYNC ENGINE) ---
+  public getLocalNetState(isHost: boolean) {
+    const localPlayer = isHost ? this.p1 : this.p2;
+    return {
+      x: localPlayer.x,
+      y: localPlayer.y,
+      vx: localPlayer.vx,
+      vy: localPlayer.vy,
+      hp: localPlayer.hp,
+      stamina: localPlayer.stamina,
+      state: localPlayer.state,
+      facing: localPlayer.facing,
+    };
+  }
+
+  public applyOpponentNetState(netState: any, isHost: boolean) {
+    const opponent = isHost ? this.p2 : this.p1;
+    if (!opponent || !netState) return;
+
+    opponent.x = netState.x;
+    opponent.y = netState.y;
+    opponent.vx = netState.vx;
+    opponent.vy = netState.vy;
+    opponent.hp = netState.hp;
+    opponent.stamina = netState.stamina;
+    opponent.state = netState.state;
+    opponent.facing = netState.facing;
+  }
+}
