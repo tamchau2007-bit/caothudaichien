@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { CharacterId, GameMode, GameSettings, KeyInputState, MapId, SkillSlot } from './game/types';
+import { CharacterId, GameMode, GameSettings, KeyInputState, SkillSlot } from './game/types';
 import { GameEngine } from './game/engine';
 import { GameRenderer } from './game/renderer';
 import { sound } from './game/sound';
@@ -30,7 +30,7 @@ export default function App() {
   // App State
   const [gameState, setGameState] = useState<AppGameState>('title');
   const [gameMode, setGameMode] = useState<GameMode>('ai');
-  const [selectedMapId, setSelectedMapId] = useState<MapId>('nguyen_hue');
+  const [selectedMapId, setSelectedMapId] = useState<string>('nguyen_hue');
   const [roomCode, setRoomCode] = useState<string>('');
   const [showSettings, setShowSettings] = useState(false);
   const [showOnlineLobby, setShowOnlineLobby] = useState(false);
@@ -68,7 +68,7 @@ export default function App() {
   const justPressedKeys = useRef<Set<string>>(new Set());
 
   // Mobile virtual inputs
-  const mobileInputs = useRef<KeyInputState>({
+  const mobileInputs = useRef<any>({
     left: false,
     right: false,
     up: false,
@@ -80,6 +80,11 @@ export default function App() {
     attackJ: false,
     skillU: false,
     skillI: false,
+    jumpPressed: false,
+    dashPressed: false,
+    attackJPressed: false,
+    skillUPressed: false,
+    skillIPressed: false,
   });
 
   useEffect(() => {
@@ -167,7 +172,7 @@ export default function App() {
     (
       p1Selected: CharacterId,
       p2Selected: CharacterId,
-      mapId: MapId,
+      mapId: string,
       mode: GameMode,
       room?: string,
       host: boolean = true,
@@ -270,12 +275,8 @@ export default function App() {
           up: heldKeys.current.has('KeyW') || mobileInputs.current.up,
           down: heldKeys.current.has('KeyS') || mobileInputs.current.down,
           jump: isJump,
-          dash: heldKeys.current.has('KeyL') || mobileInputs.current.dash,
           charge: heldKeys.current.has('KeyW') || mobileInputs.current.charge,
           guard: heldKeys.current.has('KeyS') || mobileInputs.current.guard,
-          attackJ: heldKeys.current.has('KeyJ') || mobileInputs.current.attackJ,
-          skillU: heldKeys.current.has('KeyU') || mobileInputs.current.skillU,
-          skillI: heldKeys.current.has('KeyI') || mobileInputs.current.skillI,
           jumpPressed: isJumpPressed,
           dashPressed: justPressedKeys.current.has('KeyL') || mobileInputs.current.dashPressed,
           attackJPressed: justPressedKeys.current.has('KeyJ') || mobileInputs.current.attackJPressed,
@@ -293,17 +294,13 @@ export default function App() {
             up: heldKeys.current.has('ArrowUp'),
             down: heldKeys.current.has('ArrowDown'),
             jump: heldKeys.current.has('Numpad0') || heldKeys.current.has('KeyM'),
-            dash: heldKeys.current.has('Numpad3') || heldKeys.current.has('Period'),
             charge: heldKeys.current.has('ArrowUp'),
             guard: heldKeys.current.has('ArrowDown'),
-            attackJ: heldKeys.current.has('Numpad1') || heldKeys.current.has('KeyB'),
-            skillU: heldKeys.current.has('Numpad4') || heldKeys.current.has('KeyH'),
-            skillI: heldKeys.current.has('Numpad5') || heldKeys.current.has('KeyY'),
             jumpPressed: justPressedKeys.current.has('Numpad0') || justPressedKeys.current.has('KeyM'),
             dashPressed: justPressedKeys.current.has('Numpad3') || justPressedKeys.current.has('Period'),
             attackJPressed: justPressedKeys.current.has('Numpad1') || justPressedKeys.current.has('KeyB'),
-            skillUPressed: justPressedKeys.current.has('Numpad4') || justPressedKeys.current.has('KeyH'),
-            skillIPressed: justPressedKeys.current.has('Numpad5') || justPressedKeys.current.has('KeyY'),
+            skillUPressed: justPressedKeys.current.has('Numpad4') || heldKeys.current.has('KeyH'),
+            skillIPressed: justPressedKeys.current.has('Numpad5') || heldKeys.current.has('KeyY'),
           };
         } else if (gameMode === 'online') {
           if (isOnlineHost) {
@@ -403,7 +400,7 @@ export default function App() {
       {showOnlineLobby && (
         <OnlineLobbyModal
           initialRoomCode={roomCode}
-          onStartOnlineMatch={(p1, p2, mapId, room, host, net) => {
+          onStartOnlineMatch={(p1: any, p2: any, mapId: any, room: any, host: any, net: any) => {
             setShowOnlineLobby(false);
             startMatch(p1, p2, mapId, 'online', room, host, net);
           }}
@@ -415,7 +412,7 @@ export default function App() {
         <CharacterSelect
           mode={gameMode}
           onBack={() => setGameState('title')}
-          onStartFight={(p1, p2, mapId) => startMatch(p1, p2, mapId, gameMode, roomCode)}
+          onStartFight={(p1: any, p2: any, mapId: any) => startMatch(p1, p2, mapId, gameMode, roomCode)}
         />
       )}
 
