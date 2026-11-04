@@ -74,6 +74,10 @@ export class NetworkManager {
   public onError?: (message: string) => void;
   public onRemoteInput?: (frame: number, input: KeyInputState) => void;
   public onRemoteChecksum?: (frame: number, checksum: number) => void;
+  /** Peer asked for our authoritative state (host only). */
+  public onSyncRequest?: () => void;
+  /** Host sent an authoritative snapshot after a desync. */
+  public onStateSync?: (frame: number, payload: string) => void;
   public onPeerLeft?: () => void;
   public onLatency?: (ms: number) => void;
 
@@ -180,6 +184,15 @@ export class NetworkManager {
 
   public sendChecksum(frame: number, checksum: number) {
     this.send({ type: 'checksum', frame, checksum });
+  }
+
+  /** Asks the host to resend the full authoritative simulation state. */
+  public requestStateSync() {
+    this.send({ type: 'sync_request' });
+  }
+
+  public sendStateSync(frame: number, payload: string) {
+    this.send({ type: 'state_sync', frame, payload });
   }
 
   public leave() {
@@ -322,6 +335,14 @@ export class NetworkManager {
       }
       case 'checksum': {
         this.onRemoteChecksum?.(msg.frame, msg.checksum);
+        break;
+      }
+      case 'sync_request': {
+        this.onSyncRequest?.();
+        break;
+      }
+      case 'state_sync': {
+        this.onStateSync?.(msg.frame, msg.payload);
         break;
       }
       case 'pong': {

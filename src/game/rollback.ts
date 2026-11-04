@@ -41,7 +41,7 @@ export interface RollbackOptions {
   historyFrames?: number;
   sendInput?: (frame: number, input: KeyInputState) => void;
   sendChecksum?: (frame: number, checksum: number) => void;
-  onDesync?: (frame: number, local: number, remote: number) => void;
+  onDesync?: (frame: number, local: number, remote: number, streak: number) => void;
 }
 
 const DEFAULT_HISTORY = 150;
@@ -64,17 +64,21 @@ export class RollbackSession {
   private readonly historyFrames: number;
   private readonly sendInput?: (frame: number, input: KeyInputState) => void;
   private readonly sendChecksum?: (frame: number, checksum: number) => void;
-  private readonly onDesync?: (frame: number, local: number, remote: number) => void;
+  private readonly onDesync?: (frame: number, local: number, remote: number, streak: number) => void;
 
   private localInputs = new Map<number, KeyInputState>();
   private remoteInputs = new Map<number, KeyInputState>();
   private predictedRemote = new Map<number, KeyInputState>();
   private snapshots = new Map<number, EngineSnapshot>();
   private checksums = new Map<number, number>();
+  /** Frames whose local input was already transmitted (exactly once). */
+  private sentLocal = new Set<number>();
 
   private lastLocalInput: KeyInputState = { ...EMPTY_INPUT };
   private lastKnownRemote: KeyInputState = { ...EMPTY_INPUT };
   private checksumCounter = 0;
+  private desyncStreak = 0;
+  private lastResyncAt = 0;
 
   constructor(engine: GameEngine, options: RollbackOptions) {
     this.engine = engine;
@@ -105,12 +109,31 @@ export class RollbackSession {
     this.lastLocalInput = input;
     const targetFrame = this.frame + this.inputDelay;
 
-    // Fill frames we skipped over (multiple rAF ticks collapsed into one).
-    for (let f = this.frame; f < targetFrame; f++) {
-      if (!this.localInputs.has(f)) this.localInputs.set(f, input);
+    // Only the delayed frame is written here. Every frame that is actually
+    // simulated gets its input (and its transmission) from
+    // `localInputForSimulation`, which guarantees the peer always receives the
+    // exact value this client used. Dropping frames from the wire was the
+    // root cause of the two clients drifting apart from the very first second.
+    if (!this.sentLocal.has(targetFrame) && !this.localInputs.has(targetFrame)) {
+      this.localInputs.set(targetFrame, input);
     }
-    this.localInputs.set(targetFrame, input);
-    this.sendInput?.(targetFrame, input);
+  }
+
+  /**
+   * Returns the input for a frame that is about to be simulated and makes sure
+   * the peer has been told about it (exactly once per frame).
+   */
+  private localInputForSimulation(frame: number): KeyInputState {
+    let value = this.localInputs.get(frame);
+    if (!value) {
+      value = this.lastLocalInput;
+      this.localInputs.set(frame, value);
+    }
+    if (!this.sentLocal.has(frame)) {
+      this.sentLocal.add(frame);
+      this.sendInput?.(frame, value);
+    }
+    return value;
   }
 
   /** Called by the network layer whenever a remote input frame arrives. */
@@ -138,15 +161,47 @@ export class RollbackSession {
     const local = this.checksums.get(frame);
     if (local === undefined) return;
     if (local !== remoteChecksum) {
+      this.desyncStreak += 1;
       this.stats.desyncs += 1;
-      this.onDesync?.(frame, local, remoteChecksum);
+      this.onDesync?.(frame, local, remoteChecksum, this.desyncStreak);
+      return;
     }
+    this.desyncStreak = 0;
+  }
+
+  /** Host-authoritative recovery: replace the whole simulation with a snapshot. */
+  public adoptSnapshot(snapshot: EngineSnapshot) {
+    this.engine.restore(snapshot);
+    this.frame = snapshot.frame;
+    this.localInputs.clear();
+    this.remoteInputs.clear();
+    this.predictedRemote.clear();
+    this.snapshots.clear();
+    this.checksums.clear();
+    this.sentLocal.clear();
+    this.snapshots.set(this.frame, this.engine.snapshot());
+    this.desyncStreak = 0;
+    this.stats.desyncs += 1;
+    this.stats.lastRollbackFrames = 0;
+  }
+
+  /** Snapshot to hand to the peer when they ask for a resync. */
+  public snapshotForSync(): EngineSnapshot {
+    return this.engine.snapshot();
+  }
+
+  /** Throttled so a noisy link cannot spam the peer with resync requests. */
+  public wantsResync(now: number, minIntervalMs = 1500): boolean {
+    if (this.desyncStreak === 0) return false;
+    if (now - this.lastResyncAt < minIntervalMs) return false;
+    this.lastResyncAt = now;
+    return true;
   }
 
   /** Simulates exactly one frame. */
   public advance() {
     const frame = this.frame;
-    const local = this.localInputs.get(frame) ?? this.lastLocalInput;
+    const local = this.localInputForSimulation(frame);
     const remote = this.remoteInputs.get(frame) ?? this.predictRemote(frame);
 
     this.predictedRemote.set(frame, remote);
@@ -175,7 +230,7 @@ export class RollbackSession {
     this.engine.restore(snapshot);
 
     for (let f = fromFrame; f < this.frame; f++) {
-      const local = this.localInputs.get(f) ?? this.lastLocalInput;
+      const local = this.localInputs.get(f) ?? this.localInputForSimulation(f);
       const remote =
         this.remoteInputs.get(f) ?? this.predictedRemote.get(f) ?? this.predictRemote(f);
       this.predictedRemote.set(f, remote);
@@ -216,7 +271,7 @@ export class RollbackSession {
   private maybeSendChecksum(frame: number) {
     if (!this.sendChecksum) return;
     this.checksumCounter++;
-    if (this.checksumCounter % 90 !== 0) return;
+    if (this.checksumCounter % 30 !== 0) return;
     const checksum = this.checksums.get(frame);
     if (checksum !== undefined) this.sendChecksum(frame, checksum);
   }
@@ -237,6 +292,9 @@ export class RollbackSession {
     }
     for (const key of this.localInputs.keys()) {
       if (key < Math.min(cutoff, this.frame)) this.localInputs.delete(key);
+    }
+    for (const key of this.sentLocal) {
+      if (key < cutoff) this.sentLocal.delete(key);
     }
 
     this.stats.frame = this.frame;

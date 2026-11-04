@@ -31,6 +31,8 @@ const PROJECT_ROOT = IS_PROD ? path.resolve(__dirname, '..') : __dirname;
 const DIST_DIR = path.resolve(PROJECT_ROOT, 'dist');
 
 const MAX_PLAYERS = 2;
+/** Biggest authoritative snapshot we relay (guards against abuse). */
+const MAX_SYNC_PAYLOAD = 200_000;
 const ROOM_IDLE_TTL_MS = 30 * 60 * 1000;
 const RECONNECT_GRACE_MS = 25 * 1000;
 const MATCH_START_DELAY_MS = 1600;
@@ -371,6 +373,22 @@ wss.on('connection', (ws: WebSocket) => {
         broadcast(
           room,
           { type: 'checksum', from: self.id, frame: msg.frame, checksum: msg.checksum },
+          self.id
+        );
+        break;
+      }
+      case 'sync_request': {
+        if (!room.inGame) break;
+        broadcast(room, { type: 'sync_request', from: self.id }, self.id);
+        break;
+      }
+      case 'state_sync': {
+        if (!room.inGame) break;
+        if (typeof msg.payload !== 'string' || msg.payload.length > MAX_SYNC_PAYLOAD) break;
+        if (!Number.isFinite(msg.frame)) break;
+        broadcast(
+          room,
+          { type: 'state_sync', from: self.id, frame: msg.frame, payload: msg.payload },
           self.id
         );
         break;

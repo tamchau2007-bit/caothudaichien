@@ -27,6 +27,9 @@ export type ClientMessage =
   | { type: 'rematch' }
   | { type: 'input'; frame: number; input: number }
   | { type: 'checksum'; frame: number; checksum: number }
+  /** Guest asks the host for an authoritative snapshot after a desync. */
+  | { type: 'sync_request' }
+  | { type: 'state_sync'; frame: number; payload: string }
   | { type: 'ping'; t: number }
   | { type: 'leave' };
 
@@ -55,6 +58,8 @@ export type ServerMessage =
     }
   | { type: 'input'; from: string; frame: number; input: number }
   | { type: 'checksum'; from: string; frame: number; checksum: number }
+  | { type: 'sync_request'; from: string }
+  | { type: 'state_sync'; from: string; frame: number; payload: string }
   | { type: 'pong'; t: number }
   | { type: 'peer_left'; playerId: string }
   | { type: 'error'; message: string; code?: string };

@@ -231,14 +231,22 @@ export default function App() {
       smootherRef.current.reset();
 
       if (mode === 'online' && net) {
+        // Ensure minimum inputDelay=1 for online determinism (per our tests,
+        // delay 0-1 causes immediate desync; delay 2+ keeps rollback stable).
+        const effectiveDelay = Math.max(1, settings.bufferDelay);
         const session = new RollbackSession(engine, {
           localPlayer: host ? 'p1' : 'p2',
-          inputDelay: Math.max(0, settings.bufferDelay),
+          inputDelay: effectiveDelay,
           sendInput: (frame, input) => net!.sendInput(frame, input),
           sendChecksum: (frame, checksum) => net!.sendChecksum(frame, checksum),
-          onDesync: () => {
-            setNetNotice('Phát hiện lệch trạng thái (desync) - đang tự đồng bộ lại.');
+          onDesync: (_frame, _local, _remote, streak) => {
+            if (streak <= 0) return;
+            setNetNotice('Đang đồng bộ lại trạng thái trận đấu...');
             window.setTimeout(() => setNetNotice(null), 2500);
+            // The host is authoritative: only the guest asks for a resync.
+            if (!host && session.wantsResync(performance.now())) {
+              net!.requestStateSync();
+            }
           },
         });
         sessionRef.current = session;
@@ -253,6 +261,21 @@ export default function App() {
         };
         net.onPeerLeft = () => {
           setNetNotice('Đối thủ mất kết nối. Đang chờ họ quay lại...');
+        };
+        net.onSyncRequest = () => {
+          const active = sessionRef.current;
+          if (!host || !active) return;
+          net!.sendStateSync(active.frame, JSON.stringify(active.snapshotForSync()));
+        };
+        net.onStateSync = (_frame, payload) => {
+          try {
+            const snapshot = JSON.parse(payload);
+            sessionRef.current?.adoptSnapshot(snapshot);
+            setNetNotice('Đã đồng bộ lại trận đấu với đối thủ.');
+            window.setTimeout(() => setNetNotice(null), 1800);
+          } catch (err) {
+            console.warn('State sync failed:', err);
+          }
         };
         net.onRoomUpdate = (players) => {
           if (players.filter((p) => p.id !== net!.peerId).length > 0) {
