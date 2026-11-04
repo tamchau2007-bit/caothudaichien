@@ -628,7 +628,7 @@ export class GameEngine {
             damage: 80,
             knockbackX: 12,
             knockbackY: -4,
-            hitstop: 0.08,
+            hitstop: 0.15,
             sparkColor: '#ff9800',
             soundType: 'heavy',
             activeTicks: 12,
@@ -991,8 +991,8 @@ export class GameEngine {
       h: boxH,
       damage: dmg,
       knockbackX: kx,
-      knockbackY: ky,
-      hitstop: skill.hitstop || 0.05,
+      knockbackY: ky,            hitstop: skill.hitstop || 0.10,
+
       isUnblockable: skill.isUnblockable,
       isTrip: skill.effectType === 'trip',
       isGrab: skill.isGrab,
@@ -1473,8 +1473,8 @@ export class GameEngine {
     }
 
     attacker.comboHits += 1;
-    attacker.comboDamage += result.finalDamage;
-    attacker.comboTimer = 1.2;
+    attacker.comboDamage += result.finalDamage;          attacker.comboTimer = 1.5;
+
     attacker.totalDamageDealt += result.finalDamage;
 
     this.hitstopTimer = Math.max(this.hitstopTimer, result.hitstop);
@@ -1706,7 +1706,7 @@ export class GameEngine {
   private updateComboTracking(dt: number) {
     for (const f of [this.p1, this.p2]) {
       if (f.comboTimer > 0) {
-        f.comboTimer = Math.max(0, f.comboTimer - dt);
+        f.comboTimer = Math.max(0, f.comboTimer - dt * 0.8);
         if (f.comboTimer <= 0) {
           f.comboHits = 0;
           f.comboDamage = 0;

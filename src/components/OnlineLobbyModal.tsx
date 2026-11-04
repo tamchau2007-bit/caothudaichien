@@ -157,7 +157,8 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
 
   const handleHostStart = () => {
     sound.playHit('crit');
-    // Gửi tín hiệu lên Server để Server Broadcast lệnh match_started cho cả 2 máy cùng lúc
+    // Gửi tín hiệu lên Server để Server Broadcast lệnh match_started cho cả 2 máy cùng lúc.
+    // Chủ phòng có thể bắt đầu ngay cả khi khách chưa nhấn Ready (server không kiểm tra ready)
     netManager.requestStartMatch();
   };
 

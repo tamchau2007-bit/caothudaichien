@@ -314,8 +314,10 @@ export default function App() {
     if (gameMode === 'online') {
       const net = netManagerRef.current;
       if (!net) return;
-      setNetNotice('Đã gửi yêu cầu tái đấu, chờ đối thủ...');
+      // Reset ready states so host can start immediately
       net.requestRematch();
+      // Keep current character selections - don't reset to character select
+      setNetNotice('Đã gửi yêu cầu tái đấu!');
       return;
     }
     startMatch(p1Char, p2Char, selectedMapId, gameMode);
