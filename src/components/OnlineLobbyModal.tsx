@@ -45,15 +45,25 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
   // Room Participants
   const [participants, setParticipants] = useState<RoomParticipant[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<string>('Sẵn sàng');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const charList = Object.values(CHARACTERS);
   const mapList = Object.values(MAPS);
+
+  const characterOf = (id?: string | null) => CHARACTERS[id as CharacterId] || CHARACTERS.hoang_saigon;
 
   // Setup Network Listeners
   useEffect(() => {
     netManager.onRoomUpdate = (updatedParticipants, mapId) => {
       setParticipants(updatedParticipants);
       if (mapId) setSelectedMap(mapId);
+      setIsHost(netManager.isHost);
+      setErrorMsg(null);
+    };
+
+    netManager.onError = (message) => {
+      setConnectionStatus(message);
+      setErrorMsg(message);
     };
 
     // ĐỒNG BỘ CHUẨN: Khi nhận lệnh bắt đầu từ Server, quy chuẩn P1 là Host và P2 là Guest cho CẢ 2 MÁY
@@ -87,20 +97,32 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
 
   const handleCreate = async () => {
     sound.playDash();
-    setIsHost(true);
-    const code = await netManager.createRoom(myChar, selectedMap);
-    setRoomCode(code);
-    setInLobby(true);
+    setErrorMsg(null);
+    try {
+      const code = await netManager.createRoom(myChar, selectedMap);
+      setRoomCode(code);
+      setIsHost(true);
+      setInLobby(true);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Không tạo được phòng đấu.');
+      setIsHost(false);
+    }
   };
 
   const handleJoin = async (targetCode: string) => {
     if (!targetCode || targetCode.length < 4) return;
     sound.playDash();
-    setIsHost(false);
+    setErrorMsg(null);
     const code = targetCode.toUpperCase().trim();
-    setRoomCode(code);
-    await netManager.joinRoom(code, myChar);
-    setInLobby(true);
+    try {
+      await netManager.joinRoom(code, myChar);
+      setRoomCode(code);
+      setIsHost(netManager.isHost);
+      setInLobby(true);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Không vào được phòng này.');
+      setIsHost(false);
+    }
   };
 
   const handleCharSelect = (charId: CharacterId) => {
@@ -150,6 +172,8 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
 
   const myParticipant = participants.find((p) => p.id === netManager.peerId);
   const oppParticipant = participants.find((p) => p.id !== netManager.peerId);
+  const p1CharData = characterOf(isHost ? myChar : oppParticipant?.characterId || 'hoang_saigon');
+  const p2CharData = characterOf(!isHost ? myChar : oppParticipant?.characterId || 'kendu');
 
   return (
     <div className="absolute inset-0 z-40 flex flex-col bg-gradient-to-b from-[#060810] via-[#0c1020] to-[#150d26] text-white p-4 sm:p-8 overflow-y-auto select-none">
@@ -193,6 +217,12 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
             </p>
           </div>
 
+          {errorMsg && (
+            <div className="w-full mb-4 px-4 py-2.5 rounded-xl bg-rose-950/80 border border-rose-500/70 text-rose-200 text-xs font-semibold text-center">
+              {errorMsg}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full mb-6">
             <button
               onClick={handleCreate}
@@ -233,6 +263,12 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
       ) : (
         /* STEP 2: LOBBY ACTIVE */
         <div className="flex-1 flex flex-col z-10 py-4 max-w-5xl mx-auto w-full gap-5">
+          {errorMsg && (
+            <div className="w-full px-4 py-2.5 rounded-xl bg-rose-950/80 border border-rose-500/70 text-rose-200 text-xs font-semibold text-center">
+              {errorMsg}
+            </div>
+          )}
+
           {/* ROOM CODE DISPLAY */}
           <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-950/60 via-zinc-900 to-purple-950/60 border-2 border-amber-500/50 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-4">
@@ -284,18 +320,18 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                 <div
                   className="w-14 h-14 rounded-xl flex items-center justify-center font-serif font-black text-2xl border-2"
                   style={{
-                    backgroundColor: CHARACTERS[isHost ? myChar : (oppParticipant?.characterId || 'hoang_saigon')].colorTheme.primary + '33',
-                    borderColor: CHARACTERS[isHost ? myChar : (oppParticipant?.characterId || 'hoang_saigon')].colorTheme.primary,
+                    backgroundColor: p1CharData.colorTheme.primary + '33',
+                    borderColor: p1CharData.colorTheme.primary,
                   }}
                 >
-                  {CHARACTERS[isHost ? myChar : (oppParticipant?.characterId || 'hoang_saigon')].name.charAt(0)}
+                  {p1CharData.name.charAt(0)}
                 </div>
                 <div>
                   <h4 className="font-bold text-base text-white">
-                    {CHARACTERS[isHost ? myChar : (oppParticipant?.characterId || 'hoang_saigon')].name}
+                    {p1CharData.name}
                   </h4>
                   <p className="text-xs text-zinc-400">
-                    {CHARACTERS[isHost ? myChar : (oppParticipant?.characterId || 'hoang_saigon')].title}
+                    {p1CharData.title}
                   </p>
                 </div>
               </div>
@@ -321,18 +357,18 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                 <div
                   className="w-14 h-14 rounded-xl flex items-center justify-center font-serif font-black text-2xl border-2"
                   style={{
-                    backgroundColor: CHARACTERS[!isHost ? myChar : (oppParticipant?.characterId || 'kendu')].colorTheme.primary + '33',
-                    borderColor: CHARACTERS[!isHost ? myChar : (oppParticipant?.characterId || 'kendu')].colorTheme.primary,
+                    backgroundColor: p2CharData.colorTheme.primary + '33',
+                    borderColor: p2CharData.colorTheme.primary,
                   }}
                 >
-                  {CHARACTERS[!isHost ? myChar : (oppParticipant?.characterId || 'kendu')].name.charAt(0)}
+                  {p2CharData.name.charAt(0)}
                 </div>
                 <div>
                   <h4 className="font-bold text-base text-white">
-                    {CHARACTERS[!isHost ? myChar : (oppParticipant?.characterId || 'kendu')].name}
+                    {p2CharData.name}
                   </h4>
                   <p className="text-xs text-zinc-400">
-                    {CHARACTERS[!isHost ? myChar : (oppParticipant?.characterId || 'kendu')].title}
+                    {p2CharData.title}
                   </p>
                 </div>
               </div>

@@ -5,13 +5,24 @@
 
 import { FighterEntity, Hitbox, Hurtbox, SkillDefinition, StagePlatform } from './types';
 
+/**
+ * All values are expressed in "per 60Hz frame" units because the simulation
+ * runs on a fixed deterministic timestep. Never feed real delta-time in here:
+ * the rollback netcode (online play) relies on both clients producing bit
+ * identical results from the same inputs.
+ */
 export const STAGE_CONFIG = {
   width: 1200,
   height: 680,
   floorY: 540,
   leftWall: 70,
   rightWall: 1130,
-  gravity: 34,
+  gravity: 0.86,
+  maxFallSpeed: 15,
+  /** Frames of grace after walking off a ledge where a jump still counts. */
+  coyoteFrames: 5,
+  /** Frames a jump press is remembered while busy. */
+  jumpBufferFrames: 4,
 };
 
 export interface Rect {
@@ -30,19 +41,21 @@ export function checkAABBCollision(a: Rect, b: Rect): boolean {
   );
 }
 
+/** Horizontal + vertical body box used for every attack test. */
 export function getFighterHurtbox(f: FighterEntity): Hurtbox {
-  // Center hurtbox on fighter feet/body, scale with Hoàng Sài Gòn dynamic size
   const scale = f.character.id === 'hoang_saigon' ? f.hoangScaleBonus : 1.0;
-  const w = f.width * 0.75 * scale;
-  const h = f.height * 0.88 * scale;
-  const x = f.x - w / 2;
-  const y = f.y - h;
-  return { x, y, w, h };
+  const w = Math.max(28, f.width * 0.72 * scale);
+  const h = Math.max(52, f.height * 0.9 * scale);
+  return { x: f.x - w / 2, y: f.y - h, w, h };
 }
 
 /**
- * Platform and Ground Check:
- * Checks floor Y as well as any one-way overhead platforms!
+ * Platform and ground resolution for one frame of movement.
+ *
+ * `y` is the candidate feet position for this frame (already moved), `prevY` is
+ * where the feet were before the move. A fighter only lands on a one-way
+ * platform when the feet actually cross its top edge while falling, which is
+ * what makes jumping up *through* platforms work.
  */
 export function checkGroundAndPlatformsRaycast(
   x: number,
@@ -51,31 +64,32 @@ export function checkGroundAndPlatformsRaycast(
   width: number,
   platforms: StagePlatform[],
   droppingPlatformTimer: number,
-  floorY: number = STAGE_CONFIG.floorY
+  floorY: number = STAGE_CONFIG.floorY,
+  prevY?: number
 ): { isGrounded: boolean; correctedY: number; platform: StagePlatform | null } {
-  // If moving upwards (vy < 0), pass through one-way platforms
   if (vy < 0) {
     return { isGrounded: false, correctedY: y, platform: null };
   }
 
-  // Check platforms if not currently dropping down (S + K)
-  if (droppingPlatformTimer <= 0) {
-    for (const plat of platforms) {
-      const platLeft = plat.x;
-      const platRight = plat.x + plat.w;
-      const platTop = plat.y;
+  const prev = typeof prevY === 'number' && !isNaN(prevY) ? prevY : y - Math.max(0, vy);
+  const halfW = Math.max(12, width * 0.36);
 
-      // Horizontal containment
-      if (x >= platLeft - 10 && x <= platRight + 10) {
-        // Vertical landing window: feet near platTop while falling
-        if (y >= platTop && y <= platTop + Math.max(14, vy + 4)) {
-          return { isGrounded: true, correctedY: platTop, platform: plat };
-        }
-      }
+  if (droppingPlatformTimer <= 0) {
+    let best: StagePlatform | null = null;
+    for (const plat of platforms) {
+      // Horizontal overlap with the body, not just the centre point.
+      if (x + halfW <= plat.x || x - halfW >= plat.x + plat.w) continue;
+      // Must cross the top edge from above while falling.
+      const crossedTop = prev <= plat.y + 0.5 && y >= plat.y;
+      const restingOnTop = Math.abs(y - plat.y) <= 0.5;
+      if (!crossedTop && !restingOnTop) continue;
+      if (!best || plat.y < best.y) best = plat;
+    }
+    if (best) {
+      return { isGrounded: true, correctedY: best.y, platform: best };
     }
   }
 
-  // Check main arena floor
   if (y >= floorY) {
     return { isGrounded: true, correctedY: floorY, platform: null };
   }
@@ -97,7 +111,8 @@ export interface DamageCalculationResult {
 }
 
 /**
- * Calculate damage, passives, gimmicks, guard reductions, and knockbacks
+ * Damage / guard / passive resolution. Pure: same inputs always produce the
+ * same numbers so that rollback resimulation stays in sync.
  */
 export function calculateDamage(
   attacker: FighterEntity,
@@ -105,39 +120,38 @@ export function calculateDamage(
   hitbox: Hitbox,
   skill?: SkillDefinition | null
 ): DamageCalculationResult {
-  let baseDamage = hitbox.damage;
+  let baseDamage = Math.max(1, hitbox.damage);
   let isCritical = false;
   let isBlocked = false;
   let isGuardBreak = false;
   let isSuperArmor = false;
-  let isCountered = false;
   let poisonExplosion = false;
 
-  // Attacker buffs & Passives
+  const isAirborneAttacker = !attacker.isGrounded;
+
   if (attacker.nextHitCrit) {
     baseDamage *= 1.8;
     isCritical = true;
   }
   if (attacker.character.id === 'le_dao') {
-    // Nội tại "Hoàng Kim Cốt": +20% sát thương chém + số xương đã rút
+    // "Hoàng Kim Cốt": chém +20%, cộng thêm theo số xương đã rút.
     const ribSacrificeBonus = (12 - attacker.ribBonesAvailable) * 0.04;
     baseDamage *= 1.2 + ribSacrificeBonus;
   }
-  if (attacker.character.id === 'hoang_xitrum') {
-    if (attacker.kickRangeBonusTime > 0) baseDamage *= 1.15;
+  if (attacker.character.id === 'hoang_xitrum' && attacker.kickRangeBonusTime > 0) {
+    baseDamage *= 1.15;
   }
   if (attacker.character.id === 'kendu' && attacker.beatboxFlowActive) {
     baseDamage *= 1.25;
     isCritical = true;
   }
-  if (attacker.character.id === 'hung_chimbay' && !attacker.isGrounded) {
-    baseDamage *= 1.35; // +35% Air Drift aerial damage!
+  if (attacker.character.id === 'hung_chimbay' && isAirborneAttacker) {
+    baseDamage *= 1.35; // +35% sát thương trên không
     isCritical = true;
   }
 
-  // Check Defender Counter stance
-  if (defender.counterTime > 0) {
-    isCountered = true;
+  // Counter stance (Cánh Chim Đỡ Đòn / Phản Đòn): attacker takes nothing.
+  if (defender.counterTime > 0 && attacker.playerId !== defender.playerId) {
     return {
       finalDamage: 0,
       isBlocked: false,
@@ -152,37 +166,36 @@ export function calculateDamage(
     };
   }
 
-  // Defender charging W (High risk: takes 1.5x damage, cannot guard or dodge)
+  // Gồng W: high risk, takes 1.5x damage and cannot guard.
   if (defender.state === 'CHARGE_W') {
     baseDamage *= 1.5;
   }
 
-  // Check Defender Guarding (S)
-  if (defender.state === 'GUARD' && !hitbox.isUnblockable) {
+  // Guard (S): 80% reduction, drains stamina instead of HP.
+  if (defender.state === 'GUARD' && !hitbox.isUnblockable && defender.stamina > 0) {
     isBlocked = true;
-    baseDamage *= 0.2; // 80% reduction
+    baseDamage *= 0.2;
 
-    // Guard drains stamina
-    const staminaDrain = Math.max(12, hitbox.damage * 0.45);
+    const staminaDrain = Math.max(10, hitbox.damage * 0.45);
     defender.stamina = Math.max(0, defender.stamina - staminaDrain);
-
-    if (defender.stamina <= 0) {
-      isGuardBreak = true;
-    }
+    if (defender.stamina <= 0) isGuardBreak = true;
   }
 
-  // Passive: Hoàng Sài Gòn "Mỡ Tạng Kiên Cường" + Gimmick Dynamic Size Armor
+  // Passive + gimmick armour of Hoàng Sài Gòn.
   if (defender.character.id === 'hoang_saigon') {
-    baseDamage *= 0.85; // Passive
-    baseDamage *= 1 - Math.min(0.35, defender.hoangArmorBonus); // Gimmick armor
+    baseDamage *= 0.85;
+    baseDamage *= 1 - Math.min(0.35, defender.hoangArmorBonus);
   }
 
-  // Super Armor
-  if (defender.superArmorTime > 0 || (defender.state === 'DASH' && defender.character.dashHasSuperArmor)) {
+  if (
+    defender.superArmorTime > 0 ||
+    (defender.state === 'DASH' && defender.character.dashHasSuperArmor) ||
+    skill?.isSuperArmor === true
+  ) {
     isSuperArmor = true;
   }
 
-  // Passive: Nhật Bản "Dấu Ấn Vuốt Độc" (5 stacks -> 100 DMG explosion)
+  // Nhật Bản "Dấu Ấn Vuốt Độc": 5 stacks -> +100 dmg explosion.
   if (attacker.character.id === 'nhat_ban' && hitbox.attackerId === attacker.playerId) {
     defender.poisonClawStacks += 1;
     if (defender.poisonClawStacks >= 5) {
@@ -193,25 +206,25 @@ export function calculateDamage(
     }
   }
 
-  // Passive: KenDu "Dòng Máu Beatbox" (3 consecutive hits restore 10 stamina)
+  // KenDu "Dòng Máu Beatbox": every hit restores a little stamina.
   if (attacker.character.id === 'kendu') {
     attacker.stamina = Math.min(attacker.character.maxStamina, attacker.stamina + 4);
   }
 
-  // Knockback scaling based on defender lost HP
+  // Knockback scales with damage already taken (smash-style).
   const hpLossPercent = 1 - Math.max(0, defender.hp / defender.character.maxHp);
-  let knockbackScale = (1 + hpLossPercent * 0.75) / (defender.character.weight * (defender.character.id === 'hoang_saigon' ? defender.hoangScaleBonus : 1));
+  const weight = defender.character.weight || 1;
+  const sizeScale = defender.character.id === 'hoang_saigon' ? defender.hoangScaleBonus : 1;
+  let knockbackScale = (1 + hpLossPercent * 0.75) / (weight * sizeScale);
 
-  // Passive: Hùng Chim Bay aerial knockback bonus (+35%)
-  if (attacker.character.id === 'hung_chimbay' && !attacker.isGrounded) {
+  if (attacker.character.id === 'hung_chimbay' && isAirborneAttacker) {
     knockbackScale *= 1.35;
   }
-  // Hoàng Sài Gòn Gimmick knockback bonus
   if (attacker.character.id === 'hoang_saigon') {
     knockbackScale *= 1 + attacker.hoangKnockbackBonus;
   }
 
-  const facingDir = attacker.x < defender.x ? 1 : -1;
+  const facingDir = attacker.x <= defender.x ? 1 : -1;
   let kx = hitbox.knockbackX * facingDir * knockbackScale;
   let ky = hitbox.knockbackY * knockbackScale;
 
@@ -240,6 +253,7 @@ export function calculateDamage(
   };
 }
 
+/** Wall clamp + smash-style wall bounce for fast knockback. */
 export function checkWallBounce(
   x: number,
   vx: number,

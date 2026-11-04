@@ -26,7 +26,7 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
             onTouchEnd={() => onInputEvent('charge', false)}
             onMouseDown={() => onInputEvent('charge', true)}
             onMouseUp={() => onInputEvent('charge', false)}
-            className="w-13 h-13 rounded-xl bg-amber-600/80 active:bg-amber-500 border border-amber-400 text-white font-bold text-xs flex flex-col items-center justify-center shadow-lg"
+            className="w-14 h-14 rounded-xl bg-amber-600/80 active:bg-amber-500 border border-amber-400 text-white font-bold text-xs flex flex-col items-center justify-center shadow-lg"
           >
             <span>W</span>
             <span className="text-[9px] opacity-80">Hồi Sức</span>
@@ -43,7 +43,7 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
               onInputEvent('jumpPressed', true);
             }}
             onMouseUp={() => onInputEvent('jump', false)}
-            className="w-13 h-13 rounded-xl bg-zinc-800/90 active:bg-zinc-700 border border-zinc-600 text-white font-bold text-xs flex flex-col items-center justify-center shadow-lg"
+            className="w-14 h-14 rounded-xl bg-zinc-800/90 active:bg-zinc-700 border border-zinc-600 text-white font-bold text-xs flex flex-col items-center justify-center shadow-lg"
           >
             <span>Nhảy</span>
             <span className="text-[9px] opacity-75">Phím K</span>
@@ -57,7 +57,7 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
             onTouchEnd={() => onInputEvent('left', false)}
             onMouseDown={() => onInputEvent('left', true)}
             onMouseUp={() => onInputEvent('left', false)}
-            className="w-13 h-13 rounded-xl bg-zinc-800/90 active:bg-zinc-700 border border-zinc-600 text-white font-bold text-base flex items-center justify-center shadow-lg"
+            className="w-14 h-14 rounded-xl bg-zinc-800/90 active:bg-zinc-700 border border-zinc-600 text-white font-bold text-base flex items-center justify-center shadow-lg"
           >
             ◀
           </button>
@@ -67,7 +67,7 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
             onTouchEnd={() => onInputEvent('guard', false)}
             onMouseDown={() => onInputEvent('guard', true)}
             onMouseUp={() => onInputEvent('guard', false)}
-            className="w-13 h-13 rounded-xl bg-indigo-600/80 active:bg-indigo-500 border border-indigo-400 text-white font-bold text-xs flex flex-col items-center justify-center shadow-lg"
+            className="w-14 h-14 rounded-xl bg-indigo-600/80 active:bg-indigo-500 border border-indigo-400 text-white font-bold text-xs flex flex-col items-center justify-center shadow-lg"
           >
             <span>Đỡ S</span>
             <span className="text-[9px] opacity-80">-80%</span>
@@ -78,7 +78,7 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
             onTouchEnd={() => onInputEvent('right', false)}
             onMouseDown={() => onInputEvent('right', true)}
             onMouseUp={() => onInputEvent('right', false)}
-            className="w-13 h-13 rounded-xl bg-zinc-800/90 active:bg-zinc-700 border border-zinc-600 text-white font-bold text-base flex items-center justify-center shadow-lg"
+            className="w-14 h-14 rounded-xl bg-zinc-800/90 active:bg-zinc-700 border border-zinc-600 text-white font-bold text-base flex items-center justify-center shadow-lg"
           >
             ▶
           </button>
@@ -141,7 +141,7 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
               onInputEvent('dashPressed', true);
             }}
             onMouseUp={() => onInputEvent('dash', false)}
-            className="w-13 h-13 rounded-xl bg-cyan-700/80 active:bg-cyan-600 border border-cyan-400 text-white font-bold text-xs flex flex-col items-center justify-center shadow-lg"
+            className="w-14 h-14 rounded-xl bg-cyan-700/80 active:bg-cyan-600 border border-cyan-400 text-white font-bold text-xs flex flex-col items-center justify-center shadow-lg"
           >
             <span>L</span>
             <span className="text-[9px] opacity-80">Lướt</span>
@@ -159,7 +159,7 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
               onInputEvent('skillUPressed', true);
             }}
             onMouseUp={() => onInputEvent('skillU', false)}
-            className="w-13 h-13 rounded-xl bg-purple-700/80 active:bg-purple-600 border border-purple-400 text-white font-bold text-xs flex flex-col items-center justify-center shadow-lg"
+            className="w-14 h-14 rounded-xl bg-purple-700/80 active:bg-purple-600 border border-purple-400 text-white font-bold text-xs flex flex-col items-center justify-center shadow-lg"
           >
             <span>U</span>
             <span className="text-[9px] opacity-80">Chiêu 1</span>
@@ -177,7 +177,7 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
               onInputEvent('skillIPressed', true);
             }}
             onMouseUp={() => onInputEvent('skillI', false)}
-            className="w-13 h-13 rounded-xl bg-orange-700/80 active:bg-orange-600 border border-orange-400 text-white font-bold text-xs flex flex-col items-center justify-center shadow-lg"
+            className="w-14 h-14 rounded-xl bg-orange-700/80 active:bg-orange-600 border border-orange-400 text-white font-bold text-xs flex flex-col items-center justify-center shadow-lg"
           >
             <span>I</span>
             <span className="text-[9px] opacity-80">Chiêu 2</span>

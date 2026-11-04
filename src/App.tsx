@@ -4,8 +4,9 @@
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { CharacterId, GameMode, GameSettings, KeyInputState, SkillSlot } from './game/types';
-import { GameEngine } from './game/engine';
+import { CharacterId, GameEvent, GameMode, GameSettings, KeyInputState, SkillSlot } from './game/types';
+import { GameEngine, FRAME_TIME } from './game/engine';
+import { RollbackSession } from './game/rollback';
 import { GameRenderer } from './game/renderer';
 import { sound } from './game/sound';
 import { NetworkManager } from './game/network';
@@ -20,12 +21,22 @@ import { GameOverModal } from './components/GameOverModal';
 
 type AppGameState = 'title' | 'select' | 'playing' | 'paused' | 'gameover';
 
+const MAX_STEPS_PER_TICK = 6;
+
+interface NetInfo {
+  ping: number;
+  rollback: number;
+  predicted: number;
+  delay: number;
+}
+
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<GameEngine | null>(null);
   const rendererRef = useRef<GameRenderer | null>(null);
   const netManagerRef = useRef<NetworkManager | null>(null);
-  const remoteInputsRef = useRef<KeyInputState | null>(null);
+  const sessionRef = useRef<RollbackSession | null>(null);
+  const onlineStartAtRef = useRef<number>(0);
 
   // App State
   const [gameState, setGameState] = useState<AppGameState>('title');
@@ -44,6 +55,12 @@ export default function App() {
   const [matchWinner, setMatchWinner] = useState<'p1' | 'p2' | 'draw'>('p1');
   const [matchQuote, setMatchQuote] = useState<string>('');
 
+  // Online status
+  const [netInfo, setNetInfo] = useState<NetInfo | null>(null);
+  const netInfoCounter = useRef(0);
+  const [netNotice, setNetNotice] = useState<string | null>(null);
+  const [waitingOnlineStart, setWaitingOnlineStart] = useState(false);
+
   // Settings
   const [settings, setSettings] = useState<GameSettings>({
     screenShake: true,
@@ -52,7 +69,7 @@ export default function App() {
     masterVolume: 0.8,
     bgmVolume: 0.5,
     sfxVolume: 0.8,
-    bufferDelay: 0,
+    bufferDelay: 2,
     showHitboxes: false,
     infiniteStamina: false,
     dummyBehavior: 'stand',
@@ -66,6 +83,7 @@ export default function App() {
   // Input Tracking
   const heldKeys = useRef<Set<string>>(new Set());
   const justPressedKeys = useRef<Set<string>>(new Set());
+  const soundDedupe = useRef<Map<string, number>>(new Map());
 
   // Mobile virtual inputs
   const mobileInputs = useRef<any>({
@@ -85,6 +103,7 @@ export default function App() {
     attackJPressed: false,
     skillUPressed: false,
     skillIPressed: false,
+    quickSkill: null as SkillSlot | null,
   });
 
   useEffect(() => {
@@ -97,6 +116,71 @@ export default function App() {
     sound.sfxVolume = settings.sfxVolume;
   }, [settings]);
 
+  useEffect(() => {
+    if (sessionRef.current) sessionRef.current.inputDelay = Math.max(0, settings.bufferDelay);
+  }, [settings.bufferDelay]);
+
+  // ------------------------------------------------------------------ helpers
+
+  /** Pausing online would freeze one client while the other keeps playing (desync), so it is blocked. */
+  const handlePause = useCallback(() => {
+    if (gameMode === 'online') {
+      const message = 'Không thể tạm dừng khi đang đấu online (tránh lệch trạng thái trận đấu).';
+      setNetNotice(message);
+      window.setTimeout(() => {
+        setNetNotice((prev) => (prev === message ? null : prev));
+      }, 2400);
+      return;
+    }
+    setGameState('paused');
+    sound.stopBGM();
+  }, [gameMode]);
+
+  const playEvent = useCallback((event: GameEvent) => {
+    if (event.type === 'skill') {
+      const now = performance.now();
+      const key = `skill_${event.slot}`;
+      const last = soundDedupe.current.get(key) || 0;
+      if (now - last < 60) return;
+      soundDedupe.current.set(key, now);
+      return;
+    }
+    if (event.type !== 'sound') return;
+
+    const now = performance.now();
+    const last = soundDedupe.current.get(event.name) || 0;
+    if (now - last < 35) return;
+    soundDedupe.current.set(event.name, now);
+
+    switch (event.name) {
+      case 'dash':
+        sound.playDash();
+        break;
+      case 'jump':
+        sound.playJump();
+        break;
+      case 'ultimate':
+        sound.playUltimate();
+        break;
+      case 'guardBreak':
+        sound.playGuardBreak();
+        break;
+      case 'wallBounce':
+        sound.playWallBounce();
+        break;
+      default:
+        sound.playHit(event.name);
+        break;
+    }
+  }, []);
+
+  const drainEngineEvents = useCallback(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    for (const event of engine.drainEvents()) playEvent(event);
+  }, [playEvent]);
+
+  /** Starts a match (offline modes and online, using an existing network room). */
   const startMatch = useCallback(
     (
       p1Selected: CharacterId,
@@ -107,66 +191,83 @@ export default function App() {
       host: boolean = true,
       existingNet?: NetworkManager
     ) => {
+      const prevNet = netManagerRef.current;
       setP1Char(p1Selected);
       setP2Char(p2Selected);
       setSelectedMapId(mapId);
       setGameMode(mode);
       setIsOnlineHost(host);
+      setNetNotice(null);
+      setNetInfo(null);
 
+      let net: NetworkManager | null = null;
       if (mode === 'online') {
-        const net = existingNet || new NetworkManager();
+        net = existingNet || prevNet || new NetworkManager();
         netManagerRef.current = net;
         if (room) setRoomCode(room);
-
-        net.onOpponentInput = (inputs) => {
-          remoteInputsRef.current = inputs;
-        };
-
-        net.onOpponentState = (netState) => {
-          if (engineRef.current) {
-            engineRef.current.applyOpponentNetState(netState, host);
-          }
-        };
-
-        net.onOpponentSkill = (slot: SkillSlot) => {
-          if (engineRef.current) {
-            const opp = host ? engineRef.current.p2 : engineRef.current.p1;
-            engineRef.current.executeSkill(opp, slot, true);
-          }
-        };
-
-        net.onPlayerJoined = (oppId, oppChar) => {
-          if (host) {
-            setP2Char(oppChar);
-          } else {
-            setP1Char(oppChar);
-          }
-        };
+      } else if (prevNet) {
+        prevNet.leave();
+        netManagerRef.current = null;
       }
 
-      const engine = new GameEngine(p1Selected, p2Selected, mode, settings, mapId);
+      const seed = net ? net.matchSeed || 1337 : (Date.now() % 2147483647) || 1337;
+      const engine = new GameEngine(p1Selected, p2Selected, mode, settings, mapId, seed);
 
-      engine.onSkillTriggered = (playerId, slot) => {
-        if (mode === 'online' && netManagerRef.current) {
-          const isMyFighter = (host && playerId === 'p1') || (!host && playerId === 'p2');
-          if (isMyFighter) {
-            netManagerRef.current.sendSkill(slot);
-          }
-        }
-      };
-
-      engine.onMatchEnd = (winner, quote) => {
-        setMatchWinner(winner);
-        setMatchQuote(quote);
-        setGameState('gameover');
-        sound.stopBGM();
-      };
+      // Match end is detected after each simulated tick (never inside a
+      // rollback resimulation, which would fire for a prediction that may be
+      // corrected a frame later).
       engineRef.current = engine;
 
-      setHudP1(engine.p1);
-      setHudP2(engine.p2);
-      setRoundTime(engine.roundTime);
+      if (mode === 'online' && net) {
+        const session = new RollbackSession(engine, {
+          localPlayer: host ? 'p1' : 'p2',
+          inputDelay: Math.max(0, settings.bufferDelay),
+          sendInput: (frame, input) => net!.sendInput(frame, input),
+          sendChecksum: (frame, checksum) => net!.sendChecksum(frame, checksum),
+          onDesync: () => {
+            setNetNotice('Phát hiện lệch trạng thái (desync) - đang tự đồng bộ lại.');
+            window.setTimeout(() => setNetNotice(null), 2500);
+          },
+        });
+        sessionRef.current = session;
+        onlineStartAtRef.current = performance.now() + (net.startDelayMs || 1200);
+        setWaitingOnlineStart(true);
 
+        net.onRemoteInput = (frame, input) => {
+          sessionRef.current?.receiveRemoteInput(frame, input);
+        };
+        net.onRemoteChecksum = (frame, checksum) => {
+          sessionRef.current?.receiveChecksum(frame, checksum);
+        };
+        net.onPeerLeft = () => {
+          setNetNotice('Đối thủ mất kết nối. Đang chờ họ quay lại...');
+        };
+        net.onRoomUpdate = (players) => {
+          if (players.filter((p) => p.id !== net!.peerId).length > 0) {
+            setNetNotice((prev) => (prev && prev.includes('mất kết nối') ? null : prev));
+          }
+        };
+        net.onMatchStart = (nextMapId) => {
+          const hostP = net!.currentParticipants.find((p) => p.isHost);
+          const guestP = net!.currentParticipants.find((p) => !p.isHost);
+          if (!hostP || !guestP) return;
+          startMatch(
+            hostP.characterId as CharacterId,
+            guestP.characterId as CharacterId,
+            nextMapId || mapId,
+            'online',
+            net!.roomId,
+            net!.isHost,
+            net
+          );
+        };
+      } else {
+        sessionRef.current = null;
+      }
+
+      setHudP1({ ...engine.p1 });
+      setHudP2({ ...engine.p2 });
+      setRoundTime(engine.roundTime);
       setGameState('playing');
       sound.startBGM();
     },
@@ -174,11 +275,22 @@ export default function App() {
   );
 
   const restartMatch = useCallback(() => {
-    startMatch(p1Char, p2Char, selectedMapId, gameMode, roomCode, isOnlineHost, netManagerRef.current || undefined);
-  }, [startMatch, p1Char, p2Char, selectedMapId, gameMode, roomCode, isOnlineHost]);
+    if (gameMode === 'online') {
+      const net = netManagerRef.current;
+      if (!net) return;
+      setNetNotice('Đã gửi yêu cầu tái đấu, chờ đối thủ...');
+      net.requestRematch();
+      return;
+    }
+    startMatch(p1Char, p2Char, selectedMapId, gameMode);
+  }, [gameMode, startMatch, p1Char, p2Char, selectedMapId]);
 
-  // Autostart & URL Room parameter
+  // Autostart & URL Room parameter (only once: settings changes must not restart the match)
+  const didInitRef = useRef(false);
   useEffect(() => {
+    if (didInitRef.current) return;
+    didInitRef.current = true;
+
     const params = new URLSearchParams(window.location.search);
     const autostart = params.get('autostart');
     const roomParam = params.get('room') || params.get('roomCode') || params.get('code');
@@ -206,8 +318,7 @@ export default function App() {
 
       if (e.code === 'Escape' || e.code === 'KeyP') {
         if (gameState === 'playing') {
-          setGameState('paused');
-          sound.stopBGM();
+          handlePause();
         } else if (gameState === 'paused') {
           setGameState('playing');
           sound.startBGM();
@@ -246,12 +357,85 @@ export default function App() {
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('visibilitychange', onBlur);
     };
-  }, [gameState, showOnlineLobby, restartMatch]);
+  }, [gameState, showOnlineLobby, restartMatch, handlePause]);
+
+  // ----------------------------------------------------------- simulation loop
 
   useEffect(() => {
-    let animId: number;
+    let animId = 0;
     let lastTime = performance.now();
-    let hudThrottleCounter = 0;
+    let accumulator = 0;
+    let hudCounter = 0;
+    let onlineStartAnnounced = false;
+
+    const sampleLocalInput = (): KeyInputState => {
+      const held = heldKeys.current;
+      const pressed = justPressedKeys.current;
+      const m = mobileInputs.current;
+      const quick = m.quickSkill as SkillSlot | null;
+
+      const quickW = quick === 'WU' || quick === 'WI' || quick === 'WJ';
+      const quickS = quick === 'SU' || quick === 'SI' || quick === 'SJ';
+
+      const inputs: KeyInputState = {
+        left: held.has('KeyA') || !!m.left,
+        right: held.has('KeyD') || !!m.right,
+        up: held.has('KeyW') || !!m.up,
+        down: held.has('KeyS') || !!m.down,
+        jump: held.has('KeyK') || held.has('Space') || !!m.jump,
+        charge: held.has('KeyW') || !!m.charge || quickW,
+        guard: held.has('KeyS') || !!m.guard || quickS,
+        jumpPressed: pressed.has('KeyK') || pressed.has('Space') || !!m.jumpPressed,
+        dashPressed: pressed.has('KeyL') || !!m.dashPressed,
+        attackJPressed:
+          pressed.has('KeyJ') || !!m.attackJPressed || quick === 'WJ' || quick === 'SJ',
+        skillUPressed:
+          pressed.has('KeyU') || !!m.skillUPressed || quick === 'WU' || quick === 'SU',
+        skillIPressed:
+          pressed.has('KeyI') || !!m.skillIPressed || quick === 'WI' || quick === 'SI',
+      };
+
+      m.quickSkill = null;
+      return inputs;
+    };
+
+    const sampleP2Input = (): KeyInputState => {
+      const held = heldKeys.current;
+      const pressed = justPressedKeys.current;
+      return {
+        left: held.has('ArrowLeft'),
+        right: held.has('ArrowRight'),
+        up: held.has('ArrowUp'),
+        down: held.has('ArrowDown'),
+        jump: held.has('Numpad0') || held.has('KeyM'),
+        charge: held.has('ArrowUp'),
+        guard: held.has('ArrowDown'),
+        jumpPressed: pressed.has('Numpad0') || pressed.has('KeyM'),
+        dashPressed: pressed.has('Numpad3') || pressed.has('Period'),
+        attackJPressed: pressed.has('Numpad1') || pressed.has('KeyB'),
+        skillUPressed: pressed.has('Numpad4') || pressed.has('KeyH'),
+        skillIPressed: pressed.has('Numpad5') || pressed.has('KeyY'),
+      };
+    };
+
+    const clearOneShotInputs = () => {
+      justPressedKeys.current.clear();
+      const m = mobileInputs.current;
+      m.jumpPressed = false;
+      m.dashPressed = false;
+      m.attackJPressed = false;
+      m.skillUPressed = false;
+      m.skillIPressed = false;
+    };
+
+    const stripPressed = (input: KeyInputState): KeyInputState => ({
+      ...input,
+      jumpPressed: false,
+      dashPressed: false,
+      attackJPressed: false,
+      skillUPressed: false,
+      skillIPressed: false,
+    });
 
     const loop = (currentTime: number) => {
       const rawDt = (currentTime - lastTime) / 1000;
@@ -265,73 +449,75 @@ export default function App() {
       }
       const renderer = rendererRef.current;
 
-      if (engine && renderer && (gameState === 'playing' || gameState === 'gameover')) {
-        const isJump = heldKeys.current.has('KeyK') || heldKeys.current.has('Space') || mobileInputs.current.jump;
-        const isJumpPressed = justPressedKeys.current.has('KeyK') || justPressedKeys.current.has('Space') || mobileInputs.current.jumpPressed;
+      if (engine && renderer) {
+        const session = sessionRef.current;
 
-        const localInputs: KeyInputState = {
-          left: heldKeys.current.has('KeyA') || !!mobileInputs.current.left,
-          right: heldKeys.current.has('KeyD') || !!mobileInputs.current.right,
-          up: heldKeys.current.has('KeyW') || !!mobileInputs.current.up,
-          down: heldKeys.current.has('KeyS') || !!mobileInputs.current.down,
-          jump: isJump,
-          charge: heldKeys.current.has('KeyW') || !!mobileInputs.current.charge,
-          guard: heldKeys.current.has('KeyS') || !!mobileInputs.current.guard,
-          jumpPressed: isJumpPressed,
-          dashPressed: justPressedKeys.current.has('KeyL') || !!mobileInputs.current.dashPressed,
-          attackJPressed: justPressedKeys.current.has('KeyJ') || !!mobileInputs.current.attackJPressed,
-          skillUPressed: justPressedKeys.current.has('KeyU') || !!mobileInputs.current.skillUPressed,
-          skillIPressed: justPressedKeys.current.has('KeyI') || !!mobileInputs.current.skillIPressed,
-        };
+        if (gameState === 'playing') {
+          const localInput = sampleLocalInput();
+          const p2Input = gameMode === 'local2p' ? sampleP2Input() : undefined;
 
-        let p1FinalInputs = localInputs;
-        let p2FinalInputs: KeyInputState | undefined = undefined;
+          if (session && gameMode === 'online') {
+            const notStartedYet = currentTime < onlineStartAtRef.current;
+            if (notStartedYet) {
+              accumulator = 0;
+              if (!onlineStartAnnounced) {
+                onlineStartAnnounced = true;
+                setWaitingOnlineStart(true);
+              }
+            } else {
+              if (onlineStartAnnounced) {
+                onlineStartAnnounced = false;
+                setWaitingOnlineStart(false);
+              }
+              session.setLocalInput(localInput);
+              accumulator += rawDt;
+              let steps = 0;
+              while (accumulator >= FRAME_TIME && steps < MAX_STEPS_PER_TICK) {
+                session.advance();
+                accumulator -= FRAME_TIME;
+                steps++;
+              }
+              if (accumulator > FRAME_TIME * MAX_STEPS_PER_TICK) accumulator = 0;
 
-        if (gameMode === 'local2p') {
-          p2FinalInputs = {
-            left: heldKeys.current.has('ArrowLeft'),
-            right: heldKeys.current.has('ArrowRight'),
-            up: heldKeys.current.has('ArrowUp'),
-            down: heldKeys.current.has('ArrowDown'),
-            jump: heldKeys.current.has('Numpad0') || heldKeys.current.has('KeyM'),
-            charge: heldKeys.current.has('ArrowUp'),
-            guard: heldKeys.current.has('ArrowDown'),
-            jumpPressed: justPressedKeys.current.has('Numpad0') || justPressedKeys.current.has('KeyM'),
-            dashPressed: justPressedKeys.current.has('Numpad3') || justPressedKeys.current.has('Period'),
-            attackJPressed: justPressedKeys.current.has('Numpad1') || justPressedKeys.current.has('KeyB'),
-            skillUPressed: justPressedKeys.current.has('Numpad4') || heldKeys.current.has('KeyH'),
-            skillIPressed: justPressedKeys.current.has('Numpad5') || heldKeys.current.has('KeyY'),
-          };
-        } else if (gameMode === 'online') {
-          if (isOnlineHost) {
-            p1FinalInputs = localInputs;
-            p2FinalInputs = remoteInputsRef.current || undefined;
-          } else {
-            p2FinalInputs = localInputs;
-            p1FinalInputs = remoteInputsRef.current || undefined;
-          }
-          netManagerRef.current?.sendInput(localInputs);
-        }
-
-        justPressedKeys.current.clear();
-        mobileInputs.current.jumpPressed = false;
-        mobileInputs.current.dashPressed = false;
-        mobileInputs.current.attackJPressed = false;
-        mobileInputs.current.skillUPressed = false;
-        mobileInputs.current.skillIPressed = false;
-
-        try {
-          if (gameState === 'playing') {
-            engine.update(rawDt, p1FinalInputs, p2FinalInputs);
-
-            if (gameMode === 'online' && netManagerRef.current) {
-              const myNetState = engine.getLocalNetState(isOnlineHost);
-              if (myNetState) {
-                netManagerRef.current.sendState(myNetState);
+              const net = netManagerRef.current;
+              netInfoCounter.current++;
+              if (net && netInfoCounter.current % 15 === 0) {
+                setNetInfo({
+                  ping: net.latencyMs,
+                  rollback: session.stats.rollbacks,
+                  predicted: session.predictionFrames,
+                  delay: session.inputDelay,
+                });
               }
             }
+          } else {
+            accumulator += rawDt;
+            let steps = 0;
+            while (accumulator >= FRAME_TIME && steps < MAX_STEPS_PER_TICK) {
+              engine.step(steps === 0 ? localInput : stripPressed(localInput), p2Input);
+              accumulator -= FRAME_TIME;
+              steps++;
+            }
+            if (accumulator > FRAME_TIME * MAX_STEPS_PER_TICK) accumulator = 0;
           }
 
+          clearOneShotInputs();
+          drainEngineEvents();
+
+          if (engine.isMatchOver && gameMode !== 'training') {
+            setMatchWinner(engine.winner || 'draw');
+            setMatchQuote(engine.winQuote);
+            setHudP1({ ...engine.p1 });
+            setHudP2({ ...engine.p2 });
+            setGameState('gameover');
+            sound.stopBGM();
+          }
+        } else {
+          accumulator = 0;
+          clearOneShotInputs();
+        }
+
+        try {
           renderer.render(
             engine.p1,
             engine.p2,
@@ -347,8 +533,8 @@ export default function App() {
           console.warn('Game Loop Render Exception:', err);
         }
 
-        hudThrottleCounter++;
-        if (hudThrottleCounter % 4 === 0) {
+        hudCounter++;
+        if (hudCounter % 4 === 0) {
           setHudP1({ ...engine.p1 });
           setHudP2({ ...engine.p2 });
           setRoundTime(engine.roundTime);
@@ -360,17 +546,30 @@ export default function App() {
 
     animId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animId);
-  }, [gameState, gameMode, settings.showHitboxes, isOnlineHost]);
+  }, [
+    gameState,
+    gameMode,
+    isOnlineHost,
+    settings.showHitboxes,
+    drainEngineEvents,
+  ]);
+
+  // ------------------------------------------------------------------- actions
 
   const handleMobileInput = (key: string, isPressed: boolean) => {
     mobileInputs.current[key] = isPressed;
   };
 
-  const handleMobileQuickSkill = (slot: any) => {
-    if (engineRef.current && gameState === 'playing') {
-      const localFighter = isOnlineHost ? engineRef.current.p1 : engineRef.current.p2;
-      engineRef.current.executeSkill(localFighter, slot);
-    }
+  const handleMobileQuickSkill = (slot: SkillSlot) => {
+    if (gameState === 'playing') mobileInputs.current.quickSkill = slot;
+  };
+
+  const leaveOnline = () => {
+    netManagerRef.current?.leave();
+    netManagerRef.current = null;
+    sessionRef.current = null;
+    setNetNotice(null);
+    setNetInfo(null);
   };
 
   return (
@@ -404,7 +603,10 @@ export default function App() {
             setShowOnlineLobby(false);
             startMatch(p1, p2, mapId, 'online', room, host, net);
           }}
-          onBack={() => setShowOnlineLobby(false)}
+          onBack={() => {
+            setShowOnlineLobby(false);
+            leaveOnline();
+          }}
         />
       )}
 
@@ -423,10 +625,8 @@ export default function App() {
           roundTime={roundTime}
           mode={gameMode}
           roomCode={roomCode}
-          onPause={() => {
-            setGameState('paused');
-            sound.stopBGM();
-          }}
+          netInfo={gameMode === 'online' ? netInfo : null}
+          onPause={handlePause}
           onOpenSettings={() => setShowSettings(true)}
         />
       )}
@@ -436,6 +636,21 @@ export default function App() {
           onInputEvent={handleMobileInput}
           onQuickSkill={handleMobileQuickSkill}
         />
+      )}
+
+      {(waitingOnlineStart || netNotice) && gameState === 'playing' && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none flex flex-col items-center gap-2">
+          {waitingOnlineStart && (
+            <div className="px-6 py-3 rounded-2xl bg-zinc-950/90 border-2 border-amber-400 text-amber-300 font-black font-serif text-xl tracking-widest animate-pulse">
+              ĐANG ĐỒNG BỘ TRẬN ĐẤU...
+            </div>
+          )}
+          {netNotice && (
+            <div className="px-4 py-2 rounded-xl bg-rose-950/90 border border-rose-500 text-rose-200 text-xs font-bold max-w-sm text-center">
+              {netNotice}
+            </div>
+          )}
+        </div>
       )}
 
       {gameState === 'paused' && (
@@ -448,6 +663,7 @@ export default function App() {
           onOpenSettings={() => setShowSettings(true)}
           onReturnTitle={() => {
             sound.stopBGM();
+            leaveOnline();
             setGameState('title');
           }}
         />
@@ -460,7 +676,10 @@ export default function App() {
           p1={hudP1}
           p2={hudP2}
           onRestart={restartMatch}
-          onReturnTitle={() => setGameState('title')}
+          onReturnTitle={() => {
+            leaveOnline();
+            setGameState('title');
+          }}
         />
       )}
 

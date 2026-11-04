@@ -14,6 +14,7 @@ interface InGameHUDProps {
   roundTime: number;
   mode: GameMode;
   roomCode?: string;
+  netInfo?: { ping: number; rollback: number; predicted: number; delay: number } | null;
   onPause: () => void;
   onOpenSettings: () => void;
 }
@@ -24,6 +25,7 @@ export const InGameHUD: React.FC<InGameHUDProps> = ({
   roundTime,
   mode,
   roomCode,
+  netInfo,
   onPause,
   onOpenSettings,
 }) => {
@@ -142,6 +144,26 @@ export const InGameHUD: React.FC<InGameHUDProps> = ({
               <span className="text-amber-400 font-bold">PHÒNG: {roomCode}</span>
             ) : (
               <span className="uppercase text-amber-300/90">{mode}</span>
+            )}
+            {netInfo && (
+              <>
+                <span>·</span>
+                <span
+                  className={
+                    netInfo.ping > 140
+                      ? 'text-rose-400 font-bold'
+                      : netInfo.ping > 80
+                        ? 'text-amber-300'
+                        : 'text-emerald-400'
+                  }
+                >
+                  {netInfo.ping}ms
+                </span>
+                <span>·</span>
+                <span className="text-cyan-300">RB {netInfo.rollback}</span>
+                <span>·</span>
+                <span className="text-zinc-400">DL {netInfo.delay}f</span>
+              </>
             )}
           </div>
         </div>

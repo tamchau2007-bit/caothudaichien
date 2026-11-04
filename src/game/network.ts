@@ -1,120 +1,404 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
+ *
+ * WebSocket client for the room server. Only *inputs* travel over the wire
+ * (no state snapshots) because the match simulation is deterministic and runs
+ * on both machines - see `rollback.ts`.
  */
 
-import Peer from 'peerjs';
-import { KeyInputState, SkillSlot } from './types';
+import {
+  ClientMessage,
+  PROTOCOL_VERSION,
+  ServerMessage,
+  WS_PATH,
+  packInput,
+  unpackInput,
+} from './protocol';
+import { CharacterId, KeyInputState } from './types';
+
+/** Room participant as seen by the lobby UI (character ids are typed here). */
+export interface RoomParticipant {
+  id: string;
+  isHost: boolean;
+  characterId: CharacterId;
+  ready: boolean;
+}
+
+function toParticipants(
+  players: { id: string; isHost: boolean; characterId: string; ready: boolean }[]
+): RoomParticipant[] {
+  return players.map((p) => ({
+    id: p.id,
+    isHost: p.isHost,
+    characterId: p.characterId as CharacterId,
+    ready: p.ready,
+  }));
+}
+
+const RECONNECT_ATTEMPTS = 8;
+
+function makeClientId(): string {
+  const rand = Math.random().toString(36).slice(2, 10);
+  return `p_${rand}`;
+}
+
+function wsUrl(): string {
+  if (typeof window === 'undefined') return `ws://localhost:3000${WS_PATH}`;
+  const envUrl = (import.meta as any)?.env?.VITE_WS_URL as string | undefined;
+  if (envUrl) return envUrl;
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}${WS_PATH}`;
+}
 
 export class NetworkManager {
-  public peer: any = null;
-  public conn: any = null;
-  public isHost: boolean = false;
-  public roomCode: string = '';
+  public socket: WebSocket | null = null;
+  public clientId = makeClientId();
+  public peerId = '';
+  public roomId = '';
+  public isHost = false;
+  public currentParticipants: RoomParticipant[] = [];
+  public opponentCharacter: CharacterId | null = null;
+  public mapId = 'nguyen_hue';
+  public inGame = false;
 
-  public onOpponentInput?: (inputs: KeyInputState) => void;
-  public onOpponentState?: (state: any) => void;
-  public onOpponentSkill?: (slot: SkillSlot) => void;
-  public onPlayerJoined?: (id: string, char: any) => void;
-  public onConnected?: () => void;
-  public onError?: (err: string) => void;
+  /** Deterministic match seed issued by the server. */
+  public matchSeed = 0;
+  public startDelayMs = 0;
+  public latencyMs = 0;
+  public connected = false;
 
-  public createRoom(onCreated: (code: string) => void) {
-    const code = Math.random().toString(36).substring(2, 6).toUpperCase();
-    this.roomCode = code;
+  public onRoomUpdate?: (participants: RoomParticipant[], mapId: string) => void;
+  public onMatchStart?: (mapId: string) => void;
+  public onConnectionChange?: (connected: boolean) => void;
+  public onError?: (message: string) => void;
+  public onRemoteInput?: (frame: number, input: KeyInputState) => void;
+  public onRemoteChecksum?: (frame: number, checksum: number) => void;
+  public onPeerLeft?: () => void;
+  public onLatency?: (ms: number) => void;
+
+  private createRoomResolve: ((code: string) => void) | null = null;
+  private joinRoomResolve: (() => void) | null = null;
+  private joinRoomReject: ((err: Error) => void) | null = null;
+
+  private shouldStayConnected = false;
+  private reconnectAttempts = 0;
+  private reconnectTimer: number | null = null;
+  private pingTimer: number | null = null;
+  private pendingJoin: ClientMessage | null = null;
+
+  // ------------------------------------------------------------------ public
+
+  public async createRoom(characterId: CharacterId, mapId: string): Promise<string> {
+    this.disconnectSocket();
     this.isHost = true;
+    this.mapId = mapId;
+    this.shouldStayConnected = true;
+    this.reconnectAttempts = 0;
 
-    try {
-      this.peer = new Peer(`caothudaichien_${code}`);
-
-      this.peer.on('open', () => {
-        onCreated(code);
-      });
-
-      this.peer.on('connection', (c: any) => {
-        this.conn = c;
-        this.setupConnection();
-      });
-
-      this.peer.on('error', (err: any) => {
-        console.error('PeerJS Host Error:', err);
-        this.onError?.('Không thể tạo phòng kết nối.');
-      });
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
-  public joinRoom(code: string, onJoined: () => void) {
-    const cleanCode = code.trim().toUpperCase();
-    this.roomCode = cleanCode;
-    this.isHost = false;
-
-    try {
-      this.peer = new Peer();
-
-      this.peer.on('open', () => {
-        if (this.peer) {
-          this.conn = this.peer.connect(`caothudaichien_${cleanCode}`);
-          this.setupConnection();
-          onJoined();
+    const code = await new Promise<string>((resolve, reject) => {
+      this.createRoomResolve = resolve;
+      this.joinRoomReject = reject;
+      this.pendingJoin = {
+        type: 'join',
+        create: true,
+        clientId: this.clientId,
+        characterId,
+        mapId,
+      };
+      this.openSocket();
+      window.setTimeout(() => {
+        if (this.createRoomResolve) {
+          this.createRoomResolve = null;
+          this.joinRoomReject = null;
+          reject(new Error('Không kết nối được máy chủ (quá thời gian chờ).'));
         }
-      });
-
-      this.peer.on('error', (err: any) => {
-        console.error('PeerJS Join Error:', err);
-        this.onError?.('Phòng không tồn tại hoặc lỗi mạng.');
-      });
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
-  private setupConnection() {
-    if (!this.conn) return;
-
-    this.conn.on('open', () => {
-      this.onConnected?.();
+      }, 12000);
     });
 
-    this.conn.on('data', (data: any) => {
-      if (!data) return;
-      if (data.type === 'INPUT') {
-        this.onOpponentInput?.(data.inputs);
-      } else if (data.type === 'STATE') {
-        this.onOpponentState?.(data.state);
-      } else if (data.type === 'SKILL') {
-        this.onOpponentSkill?.(data.slot);
-      } else if (data.type === 'JOIN') {
-        this.onPlayerJoined?.(data.id, data.char);
-      }
+    return code;
+  }
+
+  public async joinRoom(code: string, characterId: CharacterId): Promise<void> {
+    const roomCode = code.trim().toUpperCase();
+    if (roomCode.length < 4) throw new Error('Mã phòng phải có ít nhất 4 ký tự.');
+
+    this.disconnectSocket();
+    this.isHost = false;
+    this.shouldStayConnected = true;
+    this.reconnectAttempts = 0;
+
+    await new Promise<void>((resolve, reject) => {
+      this.joinRoomResolve = resolve;
+      this.joinRoomReject = reject;
+      this.pendingJoin = {
+        type: 'join',
+        create: false,
+        roomCode,
+        clientId: this.clientId,
+        characterId,
+        mapId: this.mapId,
+      };
+      this.openSocket();
+      window.setTimeout(() => {
+        if (this.joinRoomReject) {
+          const rejectFn = this.joinRoomReject;
+          this.joinRoomResolve = null;
+          this.joinRoomReject = null;
+          rejectFn(new Error('Không kết nối được máy chủ (quá thời gian chờ).'));
+        }
+      }, 12000);
     });
-
-    this.conn.on('close', () => {
-      console.warn('Network Connection closed.');
-    });
   }
 
-  public sendInput(inputs: KeyInputState) {
-    if (this.conn && this.conn.open) {
-      this.conn.send({ type: 'INPUT', inputs });
-    }
+  public selectCharacter(characterId: CharacterId) {
+    this.send({ type: 'select_char', characterId });
   }
 
-  public sendState(state: any) {
-    if (this.conn && this.conn.open) {
-      this.conn.send({ type: 'STATE', state });
-    }
+  public selectMap(mapId: string) {
+    this.send({ type: 'select_map', mapId });
   }
 
-  public sendSkill(slot: SkillSlot) {
-    if (this.conn && this.conn.open) {
-      this.conn.send({ type: 'SKILL', slot });
+  public setReady(ready: boolean) {
+    this.send({ type: 'ready', ready });
+  }
+
+  public requestStartMatch() {
+    this.send({ type: 'start_match' });
+  }
+
+  /** Asks the server for a fresh rematch (new seed) after the current one ends. */
+  public requestRematch() {
+    this.send({ type: 'rematch' });
+  }
+
+  /** Sends one frame of local input for rollback netcode. */
+  public sendInput(frame: number, input: KeyInputState) {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+    this.send({ type: 'input', frame, input: packInput(input) });
+  }
+
+  public sendChecksum(frame: number, checksum: number) {
+    this.send({ type: 'checksum', frame, checksum });
+  }
+
+  public leave() {
+    this.shouldStayConnected = false;
+    if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
+    this.send({ type: 'leave' });
+    this.disconnectSocket();
+    this.currentParticipants = [];
+    this.opponentCharacter = null;
+    this.roomId = '';
+    this.peerId = '';
+    this.inGame = false;
+    this.setConnected(false);
   }
 
   public disconnect() {
-    if (this.conn) this.conn.close();
-    if (this.peer) this.peer.destroy();
+    this.leave();
+  }
+
+  // ----------------------------------------------------------------- internal
+
+  private setConnected(value: boolean) {
+    if (this.connected === value) return;
+    this.connected = value;
+    this.onConnectionChange?.(value);
+  }
+
+  private send(message: ClientMessage) {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+    try {
+      this.socket.send(JSON.stringify(message));
+    } catch (err) {
+      console.warn('Không gửi được gói tin:', err);
+    }
+  }
+
+  private openSocket() {
+    try {
+      const socket = new WebSocket(wsUrl());
+      this.socket = socket;
+
+      socket.onopen = () => {
+        this.setConnected(true);
+        this.reconnectAttempts = 0;
+        if (!this.pendingJoin) {
+          // Reconnection: re-announce ourselves so the server can re-attach us.
+          this.pendingJoin = {
+            type: 'join',
+            create: false,
+            roomCode: this.roomId,
+            clientId: this.clientId,
+            characterId: (this.currentParticipants.find((p) => p.id === this.peerId)
+              ?.characterId as CharacterId) || 'hoang_saigon',
+            mapId: this.mapId,
+          };
+        }
+        if (this.pendingJoin) this.send(this.pendingJoin);
+        this.startPing();
+      };
+
+      socket.onmessage = (event) => this.handleMessage(event.data);
+      socket.onerror = () => {
+        this.onError?.('Lỗi kết nối tới máy chủ phòng đấu.');
+      };
+      socket.onclose = () => {
+        this.setConnected(false);
+        this.stopPing();
+        if (this.shouldStayConnected) this.scheduleReconnect();
+      };
+    } catch (err) {
+      console.error('Không mở được WebSocket:', err);
+      this.onError?.('Trình duyệt không mở được kết nối WebSocket.');
+    }
+  }
+
+  private handleMessage(raw: string) {
+    let msg: ServerMessage;
+    try {
+      msg = JSON.parse(raw);
+    } catch {
+      return;
+    }
+
+    switch (msg.type) {
+      case 'joined': {
+        this.peerId = msg.playerId;
+        this.roomId = msg.roomCode;
+        this.isHost = msg.isHost;
+        this.mapId = msg.mapId;
+        this.inGame = msg.inGame;
+        this.currentParticipants = toParticipants(msg.players);
+        this.opponentCharacter =
+          this.currentParticipants.find((p) => p.id !== this.peerId)?.characterId || null;
+
+        this.pendingJoin = null;
+        if (this.createRoomResolve) {
+          const resolve = this.createRoomResolve;
+          this.createRoomResolve = null;
+          this.joinRoomReject = null;
+          resolve(msg.roomCode);
+        }
+        if (this.joinRoomResolve) {
+          const resolve = this.joinRoomResolve;
+          this.joinRoomResolve = null;
+          this.joinRoomReject = null;
+          resolve();
+        }
+        this.onRoomUpdate?.(this.currentParticipants, msg.mapId);
+        break;
+      }
+      case 'room_update': {
+        this.currentParticipants = toParticipants(msg.players);
+        this.mapId = msg.mapId;
+        this.inGame = msg.inGame;
+        this.opponentCharacter =
+          this.currentParticipants.find((p) => p.id !== this.peerId)?.characterId || null;
+        this.onRoomUpdate?.(this.currentParticipants, msg.mapId);
+        break;
+      }
+      case 'match_started': {
+        this.currentParticipants = toParticipants(msg.players);
+        this.mapId = msg.mapId;
+        this.matchSeed = msg.seed;
+        this.startDelayMs = msg.startDelayMs;
+        this.inGame = true;
+        const me = this.currentParticipants.find((p) => p.id === this.peerId);
+        if (me) this.isHost = me.isHost;
+        this.opponentCharacter =
+          this.currentParticipants.find((p) => p.id !== this.peerId)?.characterId || null;
+        this.onRoomUpdate?.(this.currentParticipants, msg.mapId);
+        this.onMatchStart?.(msg.mapId);
+        break;
+      }
+      case 'input': {
+        this.onRemoteInput?.(msg.frame, unpackInput(msg.input));
+        break;
+      }
+      case 'checksum': {
+        this.onRemoteChecksum?.(msg.frame, msg.checksum);
+        break;
+      }
+      case 'pong': {
+        const rtt = Math.max(0, Date.now() - msg.t);
+        this.latencyMs = this.latencyMs === 0 ? rtt : Math.round(this.latencyMs * 0.7 + rtt * 0.3);
+        this.onLatency?.(this.latencyMs);
+        break;
+      }
+      case 'peer_left': {
+        this.inGame = false;
+        this.onPeerLeft?.();
+        break;
+      }
+      case 'error': {
+        const error = new Error(msg.message || 'Máy chủ báo lỗi.');
+        if (this.joinRoomReject) {
+          const reject = this.joinRoomReject;
+          this.joinRoomResolve = null;
+          this.joinRoomReject = null;
+          this.createRoomResolve = null;
+          this.shouldStayConnected = false;
+          reject(error);
+        } else {
+          this.onError?.(error.message);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  private scheduleReconnect() {
+    if (this.reconnectAttempts >= RECONNECT_ATTEMPTS) {
+      this.onError?.('Mất kết nối máy chủ. Vui lòng thử lại.');
+      return;
+    }
+    this.reconnectAttempts++;
+    const delay = Math.min(6000, 500 * this.reconnectAttempts);
+    if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.shouldStayConnected) this.openSocket();
+    }, delay);
+  }
+
+  private startPing() {
+    this.stopPing();
+    this.pingTimer = window.setInterval(() => {
+      this.send({ type: 'ping', t: Date.now() });
+    }, 2000);
+  }
+
+  private stopPing() {
+    if (this.pingTimer !== null) {
+      window.clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
+  }
+
+  private disconnectSocket() {
+    this.stopPing();
+    if (this.socket) {
+      this.socket.onclose = null;
+      this.socket.onerror = null;
+      this.socket.onmessage = null;
+      try {
+        this.socket.close();
+      } catch {
+        /* ignore */
+      }
+      this.socket = null;
+    }
+    this.setConnected(false);
+  }
+
+  public get protocolVersion(): number {
+    return PROTOCOL_VERSION;
   }
 }

@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: cao-thu-dai-chien
+    runtime: node
+    plan: free
+    region: singapore
+    branch: main
+    # devDependencies (vite + typescript) are required to produce the build.
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22.12.0

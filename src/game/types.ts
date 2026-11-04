@@ -17,8 +17,9 @@ export type GameMode = 'ai' | 'training' | 'local2p' | 'online';
 
 export type SkillSlot = 'J' | 'U' | 'I' | 'WU' | 'WI' | 'SU' | 'SI' | 'WJ' | 'SJ';
 
-export type MapId = 'loi_dai' | 'nguyen_hue' | 'ben_thanh' | string;
+export type MapId = 'loi_dai' | 'nguyen_hue' | 'chau_phi' | 'nhat_ban_sakura' | string;
 
+/** A single frame of player intent. Every field must stay serialisable. */
 export interface KeyInputState {
   left: boolean;
   right: boolean;
@@ -45,15 +46,34 @@ export interface GameSettings {
   masterVolume: number;
   bgmVolume: number;
   sfxVolume: number;
+  /** Online rollback input delay, measured in 60Hz frames. */
   bufferDelay: number;
   showHitboxes: boolean;
   infiniteStamina: boolean;
-  dummyBehavior: 'stand' | 'jump' | 'guard' | 'crouch';
+  dummyBehavior: 'stand' | 'jump' | 'guard' | 'crouch' | 'counter';
 }
+
+export type SkillEffectType =
+  | 'trip'
+  | 'suction'
+  | 'freeze'
+  | 'burn'
+  | 'confuse'
+  | 'slow'
+  | 'reflect'
+  | 'burger_drop'
+  | 'speaker_pulse'
+  | 'spring_bounce'
+  | 'trap_hold'
+  | 'ban_tho'
+  | 'skibidi_giant';
 
 export interface SkillDefinition {
   id: SkillSlot;
   name: string;
+  vietnameseName?: string;
+  typeDesc?: string;
+  description?: string;
   staminaCost: number;
   damage: number;
   knockback: { x: number; y: number };
@@ -68,32 +88,53 @@ export interface SkillDefinition {
   isCounter?: boolean;
   isUnblockable?: boolean;
   isGrab?: boolean;
-  effectType?: 'trip' | 'suction' | 'freeze' | 'burn';
+  isBuff?: boolean;
+  isSuperArmor?: boolean;
+  effectType?: SkillEffectType;
 }
 
 export interface CharacterData {
   id: CharacterId;
   name: string;
   title: string;
-  avatar: string;
+  archetype: string;
   maxHp: number;
   maxStamina: number;
+  /** 0.5 = heavy (hard to launch), 1.5 = light. */
+  weight: number;
   speed: number;
   dashSpeed: number;
   dashDuration: number;
+  dashType?: string;
   jumpForce: number;
   jumpCount: number;
+  passiveName?: string;
+  passiveDesc?: string;
+  gimmickName?: string;
+  gimmickDesc?: string;
   colorTheme: {
     primary: string;
     secondary: string;
+    aura?: string;
     spark: string;
   };
   skills: Record<SkillSlot, SkillDefinition>;
   winQuote: string;
   dashHasInvul?: boolean;
   dashHasSuperArmor?: boolean;
+  dashLeavesHazard?: boolean;
   hasGliding?: boolean;
+  hasWallCling?: boolean;
 }
+
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface Hurtbox extends Rect {}
 
 export interface Hitbox {
   id: string;
@@ -111,9 +152,17 @@ export interface Hitbox {
   isGrab?: boolean;
   isHeavy?: boolean;
   sparkColor: string;
-  soundType: 'light' | 'heavy' | 'slash';
+  soundType: 'light' | 'heavy' | 'slash' | 'blocked';
+  /** Frames of life left. */
   activeTicks: number;
   maxTicks: number;
+  /** When true the hitbox follows its attacker each frame. */
+  follows?: boolean;
+  /** Offset (attacker feet -> hitbox) used while following. */
+  offsetX?: number;
+  offsetY?: number;
+  /** Allows a single hitbox to hit only once per target. */
+  hasHit?: boolean;
 }
 
 export interface Projectile {
@@ -133,6 +182,9 @@ export interface Projectile {
   knockbackY: number;
   color: string;
   name: string;
+  gravity?: number;
+  hitstop?: number;
+  isUnblockable?: boolean;
   isPickupBurger?: boolean;
   isSpeakerPulse?: boolean;
   isSpringBounce?: boolean;
@@ -183,14 +235,23 @@ export interface PlatformData {
   w: number;
   h: number;
   name?: string;
+  label?: string;
   isOneWay?: boolean;
 }
+
+/** Alias kept for physics helpers. */
+export type StagePlatform = PlatformData;
 
 export interface MapData {
   id: string;
   name: string;
-  bgGradient: string[];
-  floorColor: string;
+  vietnameseName?: string;
+  themeDesc?: string;
+  description?: string;
+  bgColor?: string;
+  bgGradient?: string[];
+  floorColor?: string;
+  floorY?: number;
   platforms: PlatformData[];
 }
 
@@ -205,6 +266,19 @@ export interface PetEntity {
   timer: number;
 }
 
+export type FighterState =
+  | 'IDLE'
+  | 'WALK'
+  | 'JUMP'
+  | 'FALL'
+  | 'DASH'
+  | 'GUARD'
+  | 'GUARD_BROKEN'
+  | 'ATTACK'
+  | 'CHARGE_W'
+  | 'HIT_STUN'
+  | 'DEAD';
+
 export interface FighterEntity {
   playerId: 'p1' | 'p2';
   character: CharacterData;
@@ -217,18 +291,7 @@ export interface FighterEntity {
   facing: 1 | -1;
   hp: number;
   stamina: number;
-  state:
-    | 'IDLE'
-    | 'WALK'
-    | 'JUMP'
-    | 'FALL'
-    | 'DASH'
-    | 'GUARD'
-    | 'GUARD_BROKEN'
-    | 'ATTACK'
-    | 'CHARGE_W'
-    | 'HIT_STUN'
-    | 'DEAD';
+  state: FighterState;
   stateTime: number;
   currentSkill: SkillDefinition | null;
   skillTick: number;
@@ -270,5 +333,13 @@ export interface FighterEntity {
   comboDamage: number;
   comboTimer: number;
   totalDamageDealt: number;
+  /** Extra jumps allowed while the glide buff is active (Hùng Chim Bay). */
+  airJumpsUsed: number;
   petCat?: PetEntity;
 }
+
+/** Events emitted by a deterministic simulation step (consumed for sound/FX/UI). */
+export type GameEvent =
+  | { type: 'sound'; name: 'light' | 'heavy' | 'slash' | 'blocked' | 'crit' | 'dash' | 'jump' | 'ultimate' | 'guardBreak' | 'wallBounce' }
+  | { type: 'skill'; playerId: 'p1' | 'p2'; slot: SkillSlot }
+  | { type: 'matchEnd'; winner: 'p1' | 'p2' | 'draw'; quote: string };

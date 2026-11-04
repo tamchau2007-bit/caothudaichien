@@ -2078,7 +2078,7 @@ export class GameRenderer {
       ctx.save();
       const alpha = dt.alpha !== undefined ? dt.alpha : (dt.maxLife > 0 ? dt.life / dt.maxLife : 1);
       ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-      ctx.font = dt.isCrit ? 'bold 20px sans-serif' : 'bold 16px sans-serif';
+      ctx.font = dt.isCritical ? 'bold 20px sans-serif' : 'bold 16px sans-serif';
       ctx.fillStyle = dt.color;
       ctx.textAlign = 'center';
       ctx.strokeStyle = '#000000';
