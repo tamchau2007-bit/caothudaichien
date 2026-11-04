@@ -11,8 +11,17 @@ import {
   MapData,
   Particle,
   Projectile,
+  VisualFx,
 } from './types';
 import { STAGE_CONFIG, getFighterHurtbox } from './physics';
+
+export interface RenderExtras {
+  visualFx?: VisualFx[];
+  screenFlash?: number;
+  flashColor?: string;
+  /** Thêm hiệu ứng trailing/afterimage khi online để che các lần rollback nhỏ. */
+  online?: boolean;
+}
 
 export class GameRenderer {
   private canvas: HTMLCanvasElement;
@@ -35,7 +44,8 @@ export class GameRenderer {
     damageTexts: DamageText[],
     screenShake: { x: number; y: number },
     showHitboxes: boolean,
-    currentMap: MapData
+    currentMap: MapData,
+    extras: RenderExtras = {}
   ) {
     this.animTick++;
     const ctx = this.ctx;
@@ -51,6 +61,9 @@ export class GameRenderer {
     // 1. Draw Map Background & Platforms
     this.drawMap(currentMap, width, height);
 
+    // 1a. Atmosphere: light shafts, floating motes, stage glow
+    this.drawAtmosphere(currentMap, width, height);
+
     // 1b. Draw Epic Ultimate Cinematic Background if WJ is being cast
     this.drawUltimateCinematicBackground(p1, p2, width, height);
 
@@ -60,13 +73,26 @@ export class GameRenderer {
     // 3. Draw Pets (Hoàng Xì Trum's Cat)
     this.drawPets(p1, p2);
 
+    // 3b. Motion trails behind fast fighters (hides small rollback snaps)
+    this.updateTrail('p1', p1);
+    this.updateTrail('p2', p2);
+    this.drawTrail('p1', p1);
+    this.drawTrail('p2', p2);
+
     // 4. Draw Fighters with Distinct Animations & Gimmick Visuals
     this.drawFighter(p1);
     this.drawFighter(p2);
 
+    // 4b. Ground shadows + aura rings under the fighters
+    this.drawGroundAura(p1);
+    this.drawGroundAura(p2);
+
     // 5. Draw Visual Stacks Above Fighters (Poison Claws, Wibu Hearts, Ribs, Mỡ Tạng, Equalizer)
     this.drawGimmickStacks(p1);
     this.drawGimmickStacks(p2);
+
+    // 5b. Cosmetic impact layer (shockwave rings, dust, speed lines)
+    this.drawVisualFx(extras.visualFx || []);
 
     // 6. Draw Particles & Dust
     this.drawParticles(particles);
@@ -74,12 +100,323 @@ export class GameRenderer {
     // 7. Draw Floating Damage Numbers
     this.drawDamageTexts(damageTexts);
 
+    // 7b. Low HP danger vignette for the local drama
+    this.drawDangerVignette(p1, p2, width, height);
+
     // 8. Draw Hitboxes if in Training
     if (showHitboxes) {
       this.drawDebugBoxes(p1, p2, hitboxes, projectiles);
     }
 
+    // 9. Full-screen flash + vignette on top of everything
+    this.drawScreenFlash(extras.screenFlash || 0, extras.flashColor || '#ffffff', width, height);
+    this.drawVignette(width, height);
+
     ctx.restore();
+  }
+
+  // ---------------------------------------------------------------- atmosphere
+
+  private trail: Record<'p1' | 'p2', { x: number; y: number; facing: 1 | -1; life: number; color: string }[]> = {
+    p1: [],
+    p2: [],
+  };
+
+  private updateTrail(id: 'p1' | 'p2', f: FighterEntity) {
+    const list = this.trail[id];
+    const fast = f.state === 'DASH' || Math.abs(f.vx) > 10;
+    if (fast) {
+      list.unshift({
+        x: f.x,
+        y: f.y,
+        facing: f.facing,
+        life: 0.22,
+        color: f.character.colorTheme.secondary,
+      });
+      if (list.length > 6) list.pop();
+    }
+    for (let i = list.length - 1; i >= 0; i--) {
+      list[i].life -= 1 / 60;
+      if (list[i].life <= 0) list.splice(i, 1);
+    }
+  }
+
+  private drawTrail(id: 'p1' | 'p2', f: FighterEntity) {
+    const ctx = this.ctx;
+    this.trail[id].forEach((ghost, index) => {
+      const alpha = Math.max(0, ghost.life / 0.22) * 0.28 * (1 - index / 8);
+      if (alpha <= 0.01) return;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = ghost.color;
+      ctx.translate(ghost.x, ghost.y);
+      if (ghost.facing === -1) ctx.scale(-1, 1);
+      ctx.scale(1.05, 1);
+      ctx.beginPath();
+      ctx.ellipse(0, -52, 26, 46, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+  }
+
+  private drawGroundAura(f: FighterEntity) {
+    const ctx = this.ctx;
+    const accent = f.character.colorTheme.spark;
+    const charging = f.state === 'CHARGE_W';
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    // Soft contact shadow
+    const shadow = ctx.createRadialGradient(f.x, f.y + 2, 4, f.x, f.y + 2, 46);
+    shadow.addColorStop(0, 'rgba(0,0,0,0.55)');
+    shadow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = shadow;
+    ctx.beginPath();
+    ctx.ellipse(f.x, f.y + 2, 46, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (charging) {
+      const pulse = 0.5 + Math.sin(this.animTick * 0.18) * 0.5;
+      const glow = ctx.createRadialGradient(f.x, f.y, 2, f.x, f.y, 60 + pulse * 20);
+      glow.addColorStop(0, `${accent}55`);
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.ellipse(f.x, f.y, 60 + pulse * 20, 22, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  private atmosphereAccent(map: MapData): string {
+    switch (map.id) {
+      case 'nguyen_hue':
+        return '#38bdf8';
+      case 'chau_phi':
+        return '#fb923c';
+      case 'nhat_ban_sakura':
+        return '#f9a8d4';
+      default:
+        return '#fbbf24';
+    }
+  }
+
+  private drawAtmosphere(map: MapData, width: number, height: number) {
+    const ctx = this.ctx;
+    const tick = this.animTick;
+    const accent = this.atmosphereAccent(map);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    // Diagonal light shafts from above the stage (soft-edged strips).
+    for (let i = 0; i < 2; i++) {
+      const drift = Math.sin(tick * 0.006 + i * 1.7) * 36;
+      const centerX = width * (0.3 + i * 0.42) + drift;
+      for (let s = 0; s < 9; s++) {
+        const spread = (s - 4) / 4; // -1..1
+        const halfWidth = 40 + Math.abs(spread) * 46;
+        const x = centerX + spread * 96;
+        const alpha = (1 - Math.abs(spread)) * 0.055;
+        const shaft = ctx.createLinearGradient(x, 0, x - 140, height * 0.85);
+        shaft.addColorStop(0, `${accent}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`);
+        shaft.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = shaft;
+        ctx.beginPath();
+        ctx.moveTo(x - halfWidth, 0);
+        ctx.lineTo(x + halfWidth, 0);
+        ctx.lineTo(x + halfWidth * 0.4 - 60, height * 0.85);
+        ctx.lineTo(x - halfWidth * 1.6 - 60, height * 0.85);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // Floating dust motes (deterministic, no per-frame randomness).
+    for (let i = 0; i < 26; i++) {
+      const seedX = ((i * 137.5) % 100) / 100;
+      const seedY = ((i * 71.3) % 100) / 100;
+      const speed = 0.15 + (i % 5) * 0.05;
+      const y = (seedY * height + tick * speed) % height;
+      const x = seedX * width + Math.sin(tick * 0.01 + i) * 14;
+      const alpha = 0.06 + ((i % 4) * 0.02);
+      ctx.fillStyle = `rgba(255, 240, 200, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(x, y, 2 + (i % 3), 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Warm stage glow on the floor line.
+    const floorGlow = ctx.createLinearGradient(0, STAGE_CONFIG.floorY - 60, 0, STAGE_CONFIG.floorY + 30);
+    floorGlow.addColorStop(0, 'rgba(0,0,0,0)');
+    floorGlow.addColorStop(0.7, `${accent}2b`);
+    floorGlow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = floorGlow;
+    ctx.fillRect(0, STAGE_CONFIG.floorY - 60, width, 90);
+
+    // Map-specific particles: sakura petals, savanna embers, city neon flicker
+    if (map.id === 'nhat_ban_sakura') {
+      for (let i = 0; i < 22; i++) {
+        const seed = (i * 97.31) % 100;
+        const x = ((seed / 100) * width + Math.sin(tick * 0.02 + i) * 40) % width;
+        const y = (seed * 5.3 + tick * (0.5 + (i % 4) * 0.18)) % height;
+        const rot = tick * 0.04 + i;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(rot);
+        ctx.globalAlpha = 0.45;
+        ctx.fillStyle = i % 3 === 0 ? '#fda4af' : '#fbcfe8';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 5, 2.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    } else if (map.id === 'chau_phi') {
+      for (let i = 0; i < 18; i++) {
+        const seed = (i * 73.7) % 100;
+        const life = (tick * 0.9 + seed * 12) % 300;
+        const x = ((seed / 100) * width + Math.sin(tick * 0.03 + i) * 26) % width;
+        const y = STAGE_CONFIG.floorY - life * 0.7;
+        if (y < -20) continue;
+        ctx.globalAlpha = Math.max(0, 1 - life / 300) * 0.7;
+        ctx.fillStyle = i % 2 ? '#fbbf24' : '#fb923c';
+        ctx.beginPath();
+        ctx.arc(x, y, 1.6 + (i % 3) * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    ctx.restore();
+  }
+
+  private drawScreenFlash(flash: number, color: string, width: number, height: number) {
+    if (flash <= 0.01) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = Math.min(0.65, flash * 0.55);
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+  }
+
+  private drawDangerVignette(p1: FighterEntity, p2: FighterEntity, width: number, height: number) {
+    const ctx = this.ctx;
+    const lowHp = [p1, p2].filter((f) => f.hp / f.character.maxHp < 0.25 && f.state !== 'DEAD');
+    if (lowHp.length === 0) return;
+    const pulse = 0.35 + Math.sin(this.animTick * 0.12) * 0.2;
+    ctx.save();
+    const gradient = ctx.createRadialGradient(width / 2, height / 2, height * 0.35, width / 2, height / 2, height * 0.78);
+    gradient.addColorStop(0, 'rgba(0,0,0,0)');
+    gradient.addColorStop(1, `rgba(190, 18, 60, ${(pulse * 0.5).toFixed(3)})`);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+  }
+
+  private drawVignette(width: number, height: number) {
+    const ctx = this.ctx;
+    ctx.save();
+    const gradient = ctx.createRadialGradient(
+      width / 2,
+      height / 2,
+      height * 0.32,
+      width / 2,
+      height / 2,
+      height * 0.92
+    );
+    gradient.addColorStop(0, 'rgba(0,0,0,0)');
+    gradient.addColorStop(1, 'rgba(0,0,0,0.42)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+
+    // Cinematic letterbox shading.
+    const bottom = ctx.createLinearGradient(0, height * 0.82, 0, height);
+    bottom.addColorStop(0, 'rgba(0,0,0,0)');
+    bottom.addColorStop(1, 'rgba(0,0,0,0.55)');
+    ctx.fillStyle = bottom;
+    ctx.fillRect(0, height * 0.82, width, height * 0.18);
+    ctx.restore();
+  }
+
+  private drawVisualFx(effects: VisualFx[]) {
+    const ctx = this.ctx;
+    effects.forEach((fx) => {
+      const progress = Math.max(0, Math.min(1, fx.life / Math.max(0.001, fx.maxLife)));
+      const fade = 1 - progress;
+      if (fade <= 0.01) return;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+
+      if (fx.type === 'ring') {
+        const radius = fx.radius + progress * 62;
+        ctx.globalAlpha = fade * 0.85;
+        ctx.strokeStyle = fx.color;
+        ctx.lineWidth = Math.max(0.5, (fx.width || 3) * fade);
+        ctx.beginPath();
+        ctx.arc(fx.x, fx.y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = fade * 0.22;
+        ctx.beginPath();
+        ctx.arc(fx.x, fx.y, radius * 0.55, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (fx.type === 'burst') {
+        const radius = fx.radius * (0.4 + progress * 1.1);
+        const burst = ctx.createRadialGradient(fx.x, fx.y, 2, fx.x, fx.y, radius);
+        burst.addColorStop(0, `rgba(255,255,255,${(fade * 0.8).toFixed(3)})`);
+        burst.addColorStop(0.35, `${fx.color}ab`);
+        burst.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = burst;
+        ctx.beginPath();
+        ctx.arc(fx.x, fx.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = fade;
+        ctx.strokeStyle = fx.color;
+        ctx.lineWidth = (fx.width || 4) * fade;
+        ctx.beginPath();
+        ctx.arc(fx.x, fx.y, radius * 0.9, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (fx.type === 'dust') {
+        ctx.globalAlpha = fade * 0.6;
+        ctx.strokeStyle = fx.color;
+        for (let i = 0; i < 3; i++) {
+          ctx.lineWidth = Math.max(0.5, 2.5 * fade - i * 0.5);
+          ctx.beginPath();
+          ctx.ellipse(
+            fx.x,
+            fx.y - 2,
+            fx.radius * (0.6 + progress * 1.2) + i * 6,
+            6 + progress * 5,
+            0,
+            Math.PI * 0.12,
+            Math.PI * 0.88
+          );
+          ctx.stroke();
+        }
+      } else if (fx.type === 'speedline') {
+        const len = fx.radius * (0.4 + progress);
+        ctx.globalAlpha = fade * 0.9;
+        ctx.strokeStyle = fx.color;
+        ctx.lineWidth = fx.width || 2;
+        ctx.beginPath();
+        ctx.moveTo(fx.x, fx.y);
+        ctx.lineTo(fx.x - fx.vx * 0.5 * len * 0.06 - len * 0.4, fx.y - fx.vy * 0.5 * len * 0.06);
+        ctx.stroke();
+      } else if (fx.type === 'slash') {
+        const angle = fx.angle || 0;
+        const len = fx.radius * (0.6 + progress * 0.8);
+        ctx.globalAlpha = fade;
+        ctx.strokeStyle = fx.color;
+        ctx.lineWidth = fx.width || 4;
+        ctx.beginPath();
+        ctx.moveTo(fx.x - Math.cos(angle) * len, fx.y - Math.sin(angle) * len);
+        ctx.lineTo(fx.x + Math.cos(angle) * len, fx.y + Math.sin(angle) * len);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    });
   }
 
   /**
@@ -387,6 +724,9 @@ export class GameRenderer {
       ctx.fillStyle = sky;
       ctx.fillRect(0, 0, width, height);
 
+      this.drawStars(width, height, 60, '#e0f2fe');
+      this.drawCityDepth(width, height);
+
       // Bitexco Skyscraper Silhouette in Center
       ctx.fillStyle = '#090d1f';
       ctx.beginPath();
@@ -432,12 +772,14 @@ export class GameRenderer {
     } else if (map.id === 'chau_phi') {
       // 2. Châu Phi Safari
       const sky = ctx.createLinearGradient(0, 0, 0, STAGE_CONFIG.floorY);
-      sky.addColorStop(0, '#450a0a');
+      sky.addColorStop(0, '#2b0610');
       sky.addColorStop(0.4, '#7c2d12');
       sky.addColorStop(0.8, '#d97706');
       sky.addColorStop(1, '#f59e0b');
       ctx.fillStyle = sky;
       ctx.fillRect(0, 0, width, height);
+
+      this.drawSavannaDepth(width, height);
 
       // Giant Red Sun
       ctx.fillStyle = '#fef08a';
@@ -472,10 +814,25 @@ export class GameRenderer {
       ctx.fillStyle = sky;
       ctx.fillRect(0, 0, width, height);
 
-      // Full Moon
-      ctx.fillStyle = '#ffffff';
+      this.drawStars(width, height, 45, '#fce7f3');
+      this.drawSakuraDepth(width, height);
+
+      // Full Moon with bloom
+      const moonGlow = ctx.createRadialGradient(600, 180, 30, 600, 180, 190);
+      moonGlow.addColorStop(0, 'rgba(255, 251, 235, 0.55)');
+      moonGlow.addColorStop(1, 'rgba(255, 251, 235, 0)');
+      ctx.fillStyle = moonGlow;
+      ctx.beginPath();
+      ctx.arc(600, 180, 190, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fffbeb';
       ctx.beginPath();
       ctx.arc(600, 180, 70, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,0.05)';
+      ctx.beginPath();
+      ctx.arc(578, 162, 14, 0, Math.PI * 2);
+      ctx.arc(620, 200, 9, 0, Math.PI * 2);
       ctx.fill();
 
       // Red Torii Gate Silhouette
@@ -499,6 +856,9 @@ export class GameRenderer {
       ctx.fillStyle = sky;
       ctx.fillRect(0, 0, width, height);
 
+      this.drawStars(width, height, 30, '#e2e8f0');
+      this.drawTempleDepth(width, height);
+
       // Martial Arena Temple Roof
       ctx.fillStyle = '#7f1d1d';
       ctx.beginPath();
@@ -517,20 +877,321 @@ export class GameRenderer {
       ctx.fillRect(0, STAGE_CONFIG.floorY, width, 6);
     }
 
+    // Stage floor polish (reflections, glossy edge, depth gradient)
+    this.drawFloorGloss(map, width, height);
+
     // Platforms
+    this.drawPlatforms(map);
+  }
+
+  // ------------------------------------------------------------ stage depth
+
+  private drawStars(width: number, height: number, count: number, color: string) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.fillStyle = color;
+    for (let i = 0; i < count; i++) {
+      const x = ((i * 137.508) % 100) / 100 * width;
+      const y = ((i * 61.803) % 100) / 100 * height * 0.62;
+      const twinkle = 0.25 + ((Math.sin(this.animTick * 0.05 + i) + 1) / 2) * 0.6;
+      ctx.globalAlpha = twinkle * 0.7;
+      const r = 0.8 + (i % 3) * 0.55;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  private drawCityDepth(width: number, height: number) {
+    const ctx = this.ctx;
+    const floorY = STAGE_CONFIG.floorY;
+    const layers = [
+      { base: floorY - 40, maxH: 250, color: '#070c1c', window: 'rgba(253, 224, 71, 0.22)', step: 62 },
+      { base: floorY - 10, maxH: 175, color: '#0d152b', window: 'rgba(56, 189, 248, 0.28)', step: 78 },
+    ];
+
+    layers.forEach((layer, li) => {
+      ctx.save();
+      let x = -30;
+      let i = 0;
+      while (x < width + 40) {
+        const w = 48 + ((i * 37 + li * 19) % 74);
+        const h = layer.maxH * (0.45 + (((i * 53 + li * 11) % 55) / 100));
+        const top = layer.base - h;
+        ctx.fillStyle = layer.color;
+        ctx.fillRect(x, top, w, h + 60);
+
+        // Rooftop antenna
+        if (i % 4 === 0) {
+          ctx.fillRect(x + w / 2 - 1, top - 16, 2, 16);
+          ctx.fillStyle = 'rgba(244, 63, 94, 0.7)';
+          ctx.fillRect(x + w / 2 - 2, top - 19, 4, 4);
+          ctx.fillStyle = layer.color;
+        }
+
+        // Lit windows
+        ctx.fillStyle = layer.window;
+        for (let wy = top + 12; wy < floorY - 12; wy += 17) {
+          for (let wx = x + 7; wx < x + w - 9; wx += 15) {
+            if ((Math.floor(wx / 15) + Math.floor(wy / 17) + i) % 5 < 2) {
+              ctx.fillRect(wx, wy, 5, 7);
+            }
+          }
+        }
+        x += w + 7 + (i % 3) * 4;
+        i++;
+      }
+      ctx.restore();
+    });
+
+    // Haze pooling over the skyline
+    const haze = ctx.createLinearGradient(0, floorY - 220, 0, floorY);
+    haze.addColorStop(0, 'rgba(30, 64, 175, 0)');
+    haze.addColorStop(1, 'rgba(56, 189, 248, 0.16)');
+    ctx.fillStyle = haze;
+    ctx.fillRect(0, floorY - 220, width, 220);
+  }
+
+  private drawSavannaDepth(width: number, height: number) {
+    const ctx = this.ctx;
+    const floorY = STAGE_CONFIG.floorY;
+
+    // Distant acacia silhouettes, behind the ridges
+    ctx.save();
+    ctx.fillStyle = 'rgba(43, 15, 4, 0.75)';
+    for (let i = 0; i < 5; i++) {
+      const tx = 90 + i * 270;
+      const baseY = floorY - 78;
+      ctx.fillRect(tx - 2.5, baseY - 34, 5, 36);
+      ctx.beginPath();
+      ctx.ellipse(tx, baseY - 42, 30, 9, 0, 0, Math.PI * 2);
+      ctx.ellipse(tx - 18, baseY - 37, 18, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    const ridges = [
+      { y: floorY - 95, color: '#5b2408', amp: 26 },
+      { y: floorY - 55, color: '#3f1505', amp: 16 },
+    ];
+    ridges.forEach((ridge, ri) => {
+      ctx.fillStyle = ridge.color;
+      ctx.beginPath();
+      ctx.moveTo(0, floorY);
+      for (let x = 0; x <= width; x += 40) {
+        const y = ridge.y + Math.sin((x + ri * 90) * 0.006) * ridge.amp + Math.cos(x * 0.013) * 8;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(width, floorY);
+      ctx.closePath();
+      ctx.fill();
+    });
+
+    // Heat haze band
+    const haze = ctx.createLinearGradient(0, floorY - 180, 0, floorY);
+    haze.addColorStop(0, 'rgba(251, 146, 60, 0)');
+    haze.addColorStop(1, 'rgba(251, 146, 60, 0.24)');
+    ctx.fillStyle = haze;
+    ctx.fillRect(0, floorY - 180, width, 180);
+  }
+
+  private drawSakuraDepth(width: number, height: number) {
+    const ctx = this.ctx;
+    const floorY = STAGE_CONFIG.floorY;
+
+    // Layered mountains
+    ctx.fillStyle = 'rgba(76, 29, 149, 0.55)';
+    ctx.beginPath();
+    ctx.moveTo(0, floorY);
+    ctx.lineTo(0, floorY - 120);
+    ctx.lineTo(180, floorY - 210);
+    ctx.lineTo(360, floorY - 120);
+    ctx.lineTo(520, floorY - 240);
+    ctx.lineTo(700, floorY - 140);
+    ctx.lineTo(900, floorY - 230);
+    ctx.lineTo(1120, floorY - 130);
+    ctx.lineTo(width, floorY - 200);
+    ctx.lineTo(width, floorY);
+    ctx.closePath();
+    ctx.fill();
+
+    // Pagoda silhouettes
+    ctx.fillStyle = '#2e1065';
+    [220, 1030].forEach((px) => {
+      for (let tier = 0; tier < 3; tier++) {
+        const ty = floorY - 150 - tier * 46;
+        const tw = 120 - tier * 22;
+        ctx.beginPath();
+        ctx.moveTo(px - tw / 2 - 14, ty + 18);
+        ctx.lineTo(px, ty - 12);
+        ctx.lineTo(px + tw / 2 + 14, ty + 18);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillRect(px - tw / 2 + 10, ty + 18, tw - 20, 30);
+      }
+    });
+
+    // Hanging lanterns
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 9; i++) {
+      const lx = 40 + i * 150;
+      const ly = 80 + Math.sin(i * 1.4) * 26;
+      ctx.beginPath();
+      ctx.moveTo(lx, 0);
+      ctx.lineTo(lx, ly);
+      ctx.stroke();
+      const bob = Math.sin(this.animTick * 0.03 + i) * 4;
+      const glow = ctx.createRadialGradient(lx, ly + bob, 2, lx, ly + bob, 34);
+      glow.addColorStop(0, 'rgba(251, 113, 133, 0.65)');
+      glow.addColorStop(1, 'rgba(251, 113, 133, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(lx, ly + bob, 34, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fb7185';
+      ctx.beginPath();
+      ctx.ellipse(lx, ly + bob, 8, 11, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  private drawTempleDepth(width: number, height: number) {
+    const ctx = this.ctx;
+    const floorY = STAGE_CONFIG.floorY;
+
+    // Moonlit karst mountains
+    ctx.fillStyle = 'rgba(30, 41, 59, 0.9)';
+    ctx.beginPath();
+    ctx.moveTo(0, floorY);
+    for (let x = 0; x <= width; x += 60) {
+      const y = floorY - 150 - Math.sin(x * 0.004) * 90 - Math.cos(x * 0.009) * 40;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(width, floorY);
+    ctx.closePath();
+    ctx.fill();
+
+    // Distant temple rooftops
+    ctx.fillStyle = '#451a1a';
+    [180, 1100].forEach((rx, idx) => {
+      for (let t = 0; t < 2; t++) {
+        const top = floorY - 190 + t * 40;
+        const w = 190 - t * 40;
+        ctx.beginPath();
+        ctx.moveTo(rx - w / 2 - 20, top + 20);
+        ctx.quadraticCurveTo(rx, top - 18, rx + w / 2 + 20, top + 20);
+        ctx.lineTo(rx + w / 2, top + 26);
+        ctx.lineTo(rx - w / 2, top + 26);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = 'rgba(251, 191, 36, 0.55)';
+      ctx.fillRect(rx - 6, floorY - 250 + idx * 10, 12, 22);
+      ctx.fillStyle = '#451a1a';
+    });
+
+    // Drifting cloud bands
+    ctx.save();
+    ctx.fillStyle = 'rgba(148, 163, 184, 0.10)';
+    for (let i = 0; i < 4; i++) {
+      const cx = ((i * 340 + this.animTick * 0.25) % (width + 400)) - 200;
+      const cy = 130 + i * 62;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, 170, 20, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  private drawFloorGloss(map: MapData, width: number, height: number) {
+    const ctx = this.ctx;
+    const floorY = STAGE_CONFIG.floorY;
+    const accent = this.atmosphereAccent(map);
+
+    ctx.save();
+    const depth = ctx.createLinearGradient(0, floorY, 0, height);
+    depth.addColorStop(0, 'rgba(255, 255, 255, 0.10)');
+    depth.addColorStop(0.22, 'rgba(0, 0, 0, 0.28)');
+    depth.addColorStop(1, 'rgba(0, 0, 0, 0.72)');
+    ctx.fillStyle = depth;
+    ctx.fillRect(0, floorY, width, height - floorY);
+
+    // Reflected stage light streaks
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 9; i++) {
+      const x = (i * 157 + 48) % width;
+      const w = 44 + (i % 3) * 30;
+      const streak = ctx.createLinearGradient(0, floorY, 0, height);
+      streak.addColorStop(0, `${accent}33`);
+      streak.addColorStop(0.6, `${accent}12`);
+      streak.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = streak;
+      ctx.fillRect(x, floorY, w, height - floorY);
+    }
+
+    // Glossy edge highlight
+    const edge = ctx.createLinearGradient(0, floorY - 1, 0, floorY + 6);
+    edge.addColorStop(0, 'rgba(255, 255, 255, 0.85)');
+    edge.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = edge;
+    ctx.fillRect(0, floorY - 1, width, 7);
+    ctx.restore();
+  }
+
+  private drawPlatforms(map: MapData) {
+    const ctx = this.ctx;
+    const accent = this.atmosphereAccent(map);
+
     map.platforms.forEach((plat) => {
       ctx.save();
-      ctx.fillStyle = '#334155';
-      ctx.fillRect(plat.x, plat.y, plat.w, plat.h);
-      ctx.fillStyle = '#f59e0b';
-      ctx.fillRect(plat.x, plat.y, plat.w, 4);
+
+      // Contact shadow
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.beginPath();
+      ctx.ellipse(plat.x + plat.w / 2, plat.y + plat.h + 12, (plat.w / 2) * 0.9, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Slab body with bevel
+      const body = ctx.createLinearGradient(0, plat.y, 0, plat.y + plat.h + 16);
+      body.addColorStop(0, '#64748b');
+      body.addColorStop(0.35, '#334155');
+      body.addColorStop(1, '#0b1220');
+      ctx.fillStyle = body;
+      ctx.fillRect(plat.x, plat.y, plat.w, plat.h + 14);
+
+      // End caps
+      ctx.fillStyle = '#0b1120';
+      ctx.fillRect(plat.x - 4, plat.y + 1, 4, plat.h + 13);
+      ctx.fillRect(plat.x + plat.w, plat.y + 1, 4, plat.h + 13);
+
+      // Glowing top edge
+      ctx.fillStyle = accent;
+      ctx.fillRect(plat.x, plat.y, plat.w, 3);
+      ctx.globalCompositeOperation = 'lighter';
+      const bloom = ctx.createLinearGradient(0, plat.y - 18, 0, plat.y + 10);
+      bloom.addColorStop(0, 'rgba(0,0,0,0)');
+      bloom.addColorStop(1, `${accent}66`);
+      ctx.fillStyle = bloom;
+      ctx.fillRect(plat.x - 6, plat.y - 18, plat.w + 12, 28);
+      ctx.globalCompositeOperation = 'source-over';
+
+      // Rune ticks
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
+      for (let rx = plat.x + 14; rx < plat.x + plat.w - 10; rx += 26) {
+        ctx.fillRect(rx, plat.y + plat.h + 4, 2, 6);
+      }
 
       if (plat.label) {
         ctx.font = 'bold 10px sans-serif';
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
         ctx.textAlign = 'center';
-        ctx.fillText(plat.label, plat.x + plat.w / 2, plat.y + 14);
+        ctx.fillText(plat.label, plat.x + plat.w / 2, plat.y - 6);
       }
+
       ctx.restore();
     });
   }
@@ -553,6 +1214,20 @@ export class GameRenderer {
     }
 
     if (f.stealthTime > 0) ctx.globalAlpha = 0.25;
+
+    // Soft character aura so the silhouette pops from the background
+    const aura = ctx.createRadialGradient(0, -58, 8, 0, -58, 86);
+    aura.addColorStop(0, char.colorTheme.spark);
+    aura.addColorStop(0.55, char.colorTheme.secondary);
+    aura.addColorStop(1, 'transparent');
+    ctx.save();
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.arc(0, -58, 86, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
     if (facing === -1) ctx.scale(-1, 1);
 
     // Floor Shadow
@@ -2057,16 +2732,29 @@ export class GameRenderer {
    */
   private drawParticles(particles: Particle[]) {
     const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
     particles.forEach((pt) => {
       if (!pt.active) return;
-      ctx.save();
-      ctx.globalAlpha = Math.max(0, pt.alpha);
+      const alpha = Math.max(0, Math.min(1, pt.alpha));
+      ctx.globalAlpha = alpha;
       ctx.fillStyle = pt.color;
       ctx.beginPath();
-      ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+      ctx.arc(pt.x, pt.y, Math.max(0.5, pt.size * (0.6 + alpha * 0.6)), 0, Math.PI * 2);
       ctx.fill();
-      ctx.restore();
+
+      // Short motion streak makes sparks feel energetic.
+      if (pt.size > 3.2) {
+        ctx.globalAlpha = alpha * 0.35;
+        ctx.strokeStyle = pt.color;
+        ctx.lineWidth = Math.max(1, pt.size * 0.5);
+        ctx.beginPath();
+        ctx.moveTo(pt.x, pt.y);
+        ctx.lineTo(pt.x - pt.vx * 1.4, pt.y - pt.vy * 1.4);
+        ctx.stroke();
+      }
     });
+    ctx.restore();
   }
 
   /**
@@ -2076,15 +2764,32 @@ export class GameRenderer {
     const ctx = this.ctx;
     texts.forEach((dt) => {
       ctx.save();
-      const alpha = dt.alpha !== undefined ? dt.alpha : (dt.maxLife > 0 ? dt.life / dt.maxLife : 1);
+      const alpha = dt.alpha !== undefined ? dt.alpha : 1;
+      const progress = Math.max(0, Math.min(1, dt.life / Math.max(0.001, dt.maxLife)));
+      // Punchy pop-in, then settle.
+      const pop = progress < 0.18 ? 0.55 + (progress / 0.18) * 0.75 : 1.3 - Math.min(0.3, (progress - 0.18) * 0.55);
+      const size = dt.isCritical ? 22 : 17;
       ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-      ctx.font = dt.isCritical ? 'bold 20px sans-serif' : 'bold 16px sans-serif';
-      ctx.fillStyle = dt.color;
+      ctx.translate(dt.x, dt.y);
+      ctx.scale(pop, pop);
       ctx.textAlign = 'center';
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 3;
-      ctx.strokeText(dt.text, dt.x, dt.y);
-      ctx.fillText(dt.text, dt.x, dt.y);
+      ctx.textBaseline = 'middle';
+      ctx.font = `900 ${size}px 'Be Vietnam Pro', system-ui, sans-serif`;
+
+      // Glow behind the number.
+      ctx.shadowColor = dt.color;
+      ctx.shadowBlur = dt.isCritical ? 16 : 8;
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.lineWidth = 4;
+      ctx.strokeText(dt.text, 0, 0);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = dt.color;
+      ctx.fillText(dt.text, 0, 0);
+
+      // White highlight edge for readability on bright backgrounds.
+      ctx.globalAlpha *= 0.35;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(dt.text, 0, -1);
       ctx.restore();
     });
   }

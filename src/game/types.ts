@@ -217,6 +217,22 @@ export interface Particle {
   type: string;
 }
 
+/** Purely cosmetic world-space effect (never part of the simulation snapshot). */
+export interface VisualFx {
+  id: string;
+  type: 'ring' | 'slash' | 'burst' | 'dust' | 'speedline' | 'aura';
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  radius: number;
+  color: string;
+  angle?: number;
+  width?: number;
+}
+
 export interface DamageText {
   id: string;
   x: number;

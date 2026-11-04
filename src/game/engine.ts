@@ -18,6 +18,7 @@ import {
   Projectile,
   SkillDefinition,
   SkillSlot,
+  VisualFx,
 } from './types';
 import { CHARACTERS } from './characters';
 import { MAPS } from './maps';
@@ -193,6 +194,10 @@ export class GameEngine {
   public projectiles: Projectile[] = [];
   public particles: Particle[] = [];
   public damageTexts: DamageText[] = [];
+  /** Cosmetic-only impacts (shockwave rings, dust, sparks). */
+  public visualFx: VisualFx[] = [];
+  public screenFlash = 0;
+  public flashColor = '#ffffff';
 
   public hitstopTimer = 0;
   public screenShake = { x: 0, y: 0 };
@@ -352,6 +357,19 @@ export class GameEngine {
   public nextId(prefix: string): string {
     this.nextIdValue += 1;
     return `${prefix}_${this.nextIdValue}`;
+  }
+
+  /** Adds a cosmetic-only effect. Never read by gameplay, never snapshotted. */
+  public spawnFx(fx: Omit<VisualFx, 'id'>) {
+    if (!this.settings.vfxParticles) return;
+    if (this.visualFx.length > 64) this.visualFx.shift();
+    this.visualIdValue += 1;
+    this.visualFx.push({ ...fx, id: `fx_${this.visualIdValue}` });
+  }
+
+  public triggerFlash(color: string, amount: number) {
+    this.flashColor = color;
+    this.screenFlash = Math.max(this.screenFlash, Math.min(1, amount));
   }
 
   /**
@@ -797,9 +815,24 @@ export class GameEngine {
     f.attackDuration = skill.startupFrames + skill.activeFrames + skill.recoveryFrames;
     if (f.isGrounded) f.vx *= 0.5;
 
+    // Casting flourish at the fighter's feet.
+    this.spawnFx({
+      type: 'ring',
+      x: f.x,
+      y: f.y - 6,
+      vx: 0,
+      vy: 0,
+      life: 0,
+      maxLife: 0.32,
+      radius: 16,
+      color: f.character.colorTheme.aura || f.character.colorTheme.spark,
+      width: 3,
+    });
+
     if (slot === 'WJ') {
       this.emit({ type: 'sound', name: 'ultimate' });
       this.shakeTrauma = Math.min(1.0, this.shakeTrauma + 0.8);
+      this.triggerFlash(f.character.colorTheme.primary, 0.4);
     } else if (skill.damage >= 70) {
       this.emit({ type: 'sound', name: 'heavy' });
     } else if (skill.damage > 0) {
@@ -1446,6 +1479,40 @@ export class GameEngine {
 
     this.hitstopTimer = Math.max(this.hitstopTimer, result.hitstop);
     this.shakeTrauma = Math.min(1, this.shakeTrauma + (result.finalDamage > 70 ? 0.45 : 0.24));
+
+    // Cinematic impact layer (purely visual).
+    const heavy = result.finalDamage >= 70 || result.isCritical;
+    this.spawnFx({
+      type: 'ring',
+      x: defender.x,
+      y: defender.y - 52,
+      vx: 0,
+      vy: 0,
+      life: 0,
+      maxLife: heavy ? 0.42 : 0.28,
+      radius: heavy ? 34 : 22,
+      color: hitbox.sparkColor || '#fbbf24',
+      width: heavy ? 6 : 3,
+    });
+    if (heavy) {
+      this.triggerFlash('#ffd9a0', 0.22);
+      for (let i = 0; i < 4; i++) {
+        const angle = this.visualRng.range(-0.7, 0.7);
+        this.spawnFx({
+          type: 'speedline',
+          x: defender.x,
+          y: defender.y - 52,
+          vx: Math.cos(angle) * 26 * (attacker.facing || 1),
+          vy: Math.sin(angle) * 22,
+          life: 0,
+          maxLife: 0.22,
+          radius: this.visualRng.range(14, 34),
+          color: '#fff7ed',
+          angle,
+          width: 2,
+        });
+      }
+    }
     this.addDamageText(
       defender.x,
       defender.y - 70,
@@ -1552,6 +1619,8 @@ export class GameEngine {
     if (!Number.isFinite(f.vx)) f.vx = 0;
     if (!Number.isFinite(f.vy)) f.vy = 0;
 
+    const wasGrounded = f.isGrounded;
+    const impactSpeed = f.vy;
     const prevY = f.y;
     f.x += f.vx;
     f.y += f.vy;
@@ -1590,6 +1659,21 @@ export class GameEngine {
       f.currentPlatform = ground.platform;
       f.jumpsLeft = f.character.jumpCount;
       f.isWallClinging = false;
+
+      if (!wasGrounded && impactSpeed > 5) {
+        this.spawnFx({
+          type: 'dust',
+          x: f.x,
+          y: f.y,
+          vx: 0,
+          vy: 0,
+          life: 0,
+          maxLife: 0.34,
+          radius: 18 + impactSpeed * 2,
+          color: f.character.colorTheme.secondary,
+          width: 3,
+        });
+      }
     } else {
       f.isGrounded = false;
       if (f.currentPlatform && !ground.platform) f.currentPlatform = null;
@@ -1651,6 +1735,16 @@ export class GameEngine {
     } else {
       this.screenShake.x = 0;
       this.screenShake.y = 0;
+    }
+
+    if (this.screenFlash > 0) this.screenFlash = Math.max(0, this.screenFlash - dt * 3.4);
+
+    for (let i = this.visualFx.length - 1; i >= 0; i--) {
+      const fx = this.visualFx[i];
+      fx.life += dt;
+      fx.x += fx.vx * 0.5;
+      fx.y += fx.vy * 0.5;
+      if (fx.life >= fx.maxLife) this.visualFx.splice(i, 1);
     }
 
     for (const p of this.particles) {
@@ -1850,6 +1944,24 @@ export class GameEngine {
   }
 
   private finishMatch(winner: 'p1' | 'p2' | 'draw', quote: string) {
+    const loser = winner === 'p1' ? this.p2 : winner === 'p2' ? this.p1 : null;
+    if (loser) {
+      this.spawnFx({
+        type: 'burst',
+        x: loser.x,
+        y: loser.y - 55,
+        vx: 0,
+        vy: 0,
+        life: 0,
+        maxLife: 0.7,
+        radius: 95,
+        color: loser.character.colorTheme.spark,
+        width: 6,
+      });
+      this.spawnSparks(loser.x, loser.y - 55, loser.character.colorTheme.primary, 26);
+    }
+    this.triggerFlash('#ffffff', 0.45);
+    this.shakeTrauma = 1;
     this.emit({ type: 'matchEnd', winner, quote });
     this.onMatchEnd?.(winner, quote);
   }

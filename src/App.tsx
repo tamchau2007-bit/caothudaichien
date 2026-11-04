@@ -8,6 +8,7 @@ import { CharacterId, GameEvent, GameMode, GameSettings, KeyInputState, SkillSlo
 import { GameEngine, FRAME_TIME } from './game/engine';
 import { RollbackSession } from './game/rollback';
 import { GameRenderer } from './game/renderer';
+import { ViewSmoothing } from './game/viewSmoothing';
 import { sound } from './game/sound';
 import { NetworkManager } from './game/network';
 import { TitleScreen } from './components/TitleScreen';
@@ -37,6 +38,9 @@ export default function App() {
   const netManagerRef = useRef<NetworkManager | null>(null);
   const sessionRef = useRef<RollbackSession | null>(null);
   const onlineStartAtRef = useRef<number>(0);
+  const smootherRef = useRef<ViewSmoothing>(new ViewSmoothing());
+  const delayCounter = useRef(0);
+  const splashTimerRef = useRef<number | null>(null);
 
   // App State
   const [gameState, setGameState] = useState<AppGameState>('title');
@@ -60,6 +64,7 @@ export default function App() {
   const netInfoCounter = useRef(0);
   const [netNotice, setNetNotice] = useState<string | null>(null);
   const [waitingOnlineStart, setWaitingOnlineStart] = useState(false);
+  const [showSplash, setShowSplash] = useState(false);
 
   // Settings
   const [settings, setSettings] = useState<GameSettings>({
@@ -121,6 +126,12 @@ export default function App() {
   }, [settings.bufferDelay]);
 
   // ------------------------------------------------------------------ helpers
+
+  const playSplash = useCallback(() => {
+    setShowSplash(true);
+    if (splashTimerRef.current !== null) window.clearTimeout(splashTimerRef.current);
+    splashTimerRef.current = window.setTimeout(() => setShowSplash(false), 1300);
+  }, []);
 
   /** Pausing online would freeze one client while the other keeps playing (desync), so it is blocked. */
   const handlePause = useCallback(() => {
@@ -217,6 +228,7 @@ export default function App() {
       // rollback resimulation, which would fire for a prediction that may be
       // corrected a frame later).
       engineRef.current = engine;
+      smootherRef.current.reset();
 
       if (mode === 'online' && net) {
         const session = new RollbackSession(engine, {
@@ -270,8 +282,9 @@ export default function App() {
       setRoundTime(engine.roundTime);
       setGameState('playing');
       sound.startBGM();
+      if (mode !== 'online') playSplash();
     },
-    [settings]
+    [settings, playSplash]
   );
 
   const restartMatch = useCallback(() => {
@@ -468,6 +481,7 @@ export default function App() {
               if (onlineStartAnnounced) {
                 onlineStartAnnounced = false;
                 setWaitingOnlineStart(false);
+                playSplash();
               }
               session.setLocalInput(localInput);
               accumulator += rawDt;
@@ -488,6 +502,17 @@ export default function App() {
                   predicted: session.predictionFrames,
                   delay: session.inputDelay,
                 });
+              }
+
+              // Auto input delay: enough buffer to hide jitter, never more than
+              // needed so the controls stay responsive.
+              delayCounter.current++;
+              if (net && delayCounter.current >= 120) {
+                delayCounter.current = 0;
+                const ping = net.latencyMs;
+                const autoTarget = ping > 130 ? 3 : ping > 75 ? 2 : 1;
+                const desired = Math.min(6, Math.max(Math.max(0, settings.bufferDelay), autoTarget));
+                if (desired !== session.inputDelay) session.inputDelay = desired;
               }
             }
           } else {
@@ -518,16 +543,27 @@ export default function App() {
         }
 
         try {
+          const smoothDt = Math.min(0.05, rawDt);
+          smootherRef.current.strength = gameMode === 'online' ? 0.46 : 0.34;
+          const viewP1 = smootherRef.current.view('p1', engine.p1, smoothDt);
+          const viewP2 = smootherRef.current.view('p2', engine.p2, smoothDt);
+
           renderer.render(
-            engine.p1,
-            engine.p2,
+            viewP1,
+            viewP2,
             engine.hitboxes,
             engine.projectiles,
             engine.particles,
             engine.damageTexts,
             engine.screenShake,
             settings.showHitboxes,
-            engine.currentMap
+            engine.currentMap,
+            {
+              visualFx: engine.visualFx,
+              screenFlash: engine.screenFlash,
+              flashColor: engine.flashColor,
+              online: gameMode === 'online',
+            }
           );
         } catch (err) {
           console.warn('Game Loop Render Exception:', err);
@@ -638,18 +674,37 @@ export default function App() {
         />
       )}
 
+      {/* Trạng thái mạng: gọn ở góc trái, không che giữa màn hình */}
       {(waitingOnlineStart || netNotice) && gameState === 'playing' && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none flex flex-col items-center gap-2">
+        <div className="pointer-events-none absolute left-3 top-[6.2rem] sm:top-[7.4rem] z-30 flex max-w-[15rem] flex-col gap-1.5">
           {waitingOnlineStart && (
-            <div className="px-6 py-3 rounded-2xl bg-zinc-950/90 border-2 border-amber-400 text-amber-300 font-black font-serif text-xl tracking-widest animate-pulse">
-              ĐANG ĐỒNG BỘ TRẬN ĐẤU...
+            <div className="flex items-center gap-2 rounded-full border border-amber-400/40 bg-zinc-950/80 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-amber-300 backdrop-blur-md shadow-[0_0_16px_rgba(0,0,0,0.6)]">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-amber-300" />
+              </span>
+              Đang đồng bộ
             </div>
           )}
           {netNotice && (
-            <div className="px-4 py-2 rounded-xl bg-rose-950/90 border border-rose-500 text-rose-200 text-xs font-bold max-w-sm text-center">
+            <div className="rounded-lg border border-rose-500/40 bg-rose-950/80 px-2 py-1 text-[9px] font-semibold leading-snug text-rose-200 backdrop-blur-md shadow-lg">
               {netNotice}
             </div>
           )}
+        </div>
+      )}
+
+      {/* FIGHT splash */}
+      {showSplash && gameState === 'playing' && (
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center overflow-hidden">
+          <div className="animate-splash text-center">
+            <div className="bg-gradient-to-b from-amber-100 via-amber-300 to-orange-600 bg-clip-text text-[15vw] font-black italic leading-none tracking-tight text-transparent drop-shadow-[0_0_50px_rgba(251,191,36,0.55)] sm:text-[8.5vw]">
+              FIGHT!
+            </div>
+            <div className="mt-1 text-[10px] font-black uppercase tracking-[0.55em] text-amber-200/70 sm:text-xs">
+              {hudP1.character.name} vs {hudP2.character.name}
+            </div>
+          </div>
         </div>
       )}
 

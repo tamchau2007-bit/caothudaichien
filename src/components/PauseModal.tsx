@@ -21,8 +21,8 @@ export const PauseModal: React.FC<PauseModalProps> = ({
 }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 select-none animate-in fade-in duration-150">
-      <div className="relative w-full max-w-sm rounded-2xl bg-zinc-900 border border-zinc-700/80 p-6 text-white text-center shadow-2xl">
-        <h2 className="text-2xl font-black font-serif text-amber-400 tracking-wider mb-1">
+      <div className="relative w-full max-w-sm rounded-2xl glass-panel animate-pop-in p-6 text-white text-center">
+        <h2 className="text-2xl font-black tracking-tight bg-gradient-to-b from-amber-100 via-amber-300 to-orange-500 bg-clip-text text-transparent mb-1">
           TẠM DỪNG TRẬN ĐẤU
         </h2>
         <p className="text-xs text-zinc-400 font-mono mb-6">Nhấn Esc hoặc P để tiếp tục</p>

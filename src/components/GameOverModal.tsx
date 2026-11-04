@@ -29,14 +29,15 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 select-none animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md rounded-2xl bg-gradient-to-b from-zinc-900 via-zinc-900 to-zinc-950 border border-amber-500/50 p-6 text-white text-center shadow-[0_0_50px_rgba(245,158,11,0.25)]">
+      <div className="relative w-full max-w-md rounded-2xl glass-panel animate-pop-in border-amber-500/50 p-6 text-white text-center shadow-[0_0_60px_rgba(245,158,11,0.28)]">
+        <div className="pointer-events-none absolute -top-24 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-amber-500/20 blur-3xl" />
         {/* Crest Trophy Icon */}
-        <div className="mx-auto w-16 h-16 rounded-2xl bg-amber-500/15 border-2 border-amber-400 flex items-center justify-center mb-3 shadow-lg">
+        <div className="relative mx-auto w-16 h-16 rounded-2xl bg-amber-500/15 border-2 border-amber-400 flex items-center justify-center mb-3 shadow-lg animate-pulse-ring">
           <Trophy className="w-9 h-9 text-amber-400" />
         </div>
 
         {/* Title */}
-        <h2 className="text-2xl sm:text-3xl font-black font-serif text-amber-400 tracking-wider mb-1">
+        <h2 className="text-2xl sm:text-3xl font-black tracking-tight bg-gradient-to-b from-amber-100 via-amber-300 to-orange-500 bg-clip-text text-transparent mb-1">
           {winner === 'draw' ? 'BẤT PHÂN THẮNG BẠI' : `${winnerEntity?.character.name.toUpperCase()} THẮNG!`}
         </h2>
         <div className="text-xs text-zinc-400 font-semibold tracking-widest uppercase mb-4">

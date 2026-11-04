@@ -57,6 +57,13 @@ export const CharacterSelect: React.FC<CharacterSelectProps> = ({
 
   return (
     <div className="absolute inset-0 z-30 flex flex-col justify-between bg-gradient-to-b from-[#090c16] via-[#101424] to-[#1a112c] text-white p-4 sm:p-6 overflow-y-auto select-none">
+      <div
+        className="pointer-events-none absolute inset-0 opacity-25"
+        style={{
+          backgroundImage:
+            'radial-gradient(circle at 20% 0%, rgba(251,191,36,0.35), transparent 45%), radial-gradient(circle at 85% 10%, rgba(244,63,94,0.3), transparent 40%)',
+        }}
+      />
       {/* Top Header */}
       <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
         <div className="flex items-center gap-3">
@@ -66,8 +73,8 @@ export const CharacterSelect: React.FC<CharacterSelectProps> = ({
           >
             <ArrowLeft className="w-4 h-4" /> Quay Lại
           </button>
-          <h1 className="text-xl sm:text-2xl font-black font-serif text-amber-400 tracking-wide">
-            CHỌN BÁT ĐẠI CAO THỦ & VÕ ĐÀI
+          <h1 className="text-lg sm:text-2xl font-black tracking-tight bg-gradient-to-r from-amber-200 via-amber-400 to-rose-400 bg-clip-text text-transparent">
+            CHỌN BÁT ĐẠI CAO THỦ
           </h1>
         </div>
 
@@ -139,13 +146,21 @@ export const CharacterSelect: React.FC<CharacterSelectProps> = ({
               <button
                 key={id}
                 onClick={() => handleSelect(id)}
-                className={`relative flex flex-col p-2.5 rounded-xl border text-left transition hover:scale-[1.02] cursor-pointer ${
+                className={`group relative flex flex-col overflow-hidden p-2.5 rounded-xl border text-left transition-all duration-200 hover:scale-[1.03] hover:shadow-[0_14px_34px_rgba(0,0,0,0.6)] cursor-pointer ${
                   isInspected
-                    ? 'border-amber-400 bg-zinc-800/90 shadow-[0_0_20px_rgba(245,158,11,0.25)]'
-                    : 'border-zinc-800 bg-zinc-900/70 hover:border-zinc-700'
+                    ? 'border-amber-400/90 bg-zinc-800/90 shadow-[0_0_24px_rgba(245,158,11,0.28)]'
+                    : 'border-zinc-800 bg-gradient-to-b from-zinc-900/80 to-zinc-950/80 hover:border-zinc-600'
                 }`}
               >
-                <div className="absolute top-2 right-2 flex gap-1">
+                <span
+                  className="absolute inset-x-0 top-0 h-[3px] opacity-80 group-hover:opacity-100 transition"
+                  style={{ backgroundColor: c.colorTheme.spark }}
+                />
+                <span
+                  className="pointer-events-none absolute -inset-8 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                  style={{ background: `radial-gradient(circle at 30% 0%, ${c.colorTheme.spark}33, transparent 65%)` }}
+                />
+                <div className="absolute top-2 right-2 flex gap-1 z-10">
                   {isP1 && (
                     <span className="px-1.5 py-0.5 rounded bg-amber-500 text-zinc-950 font-black text-[10px]">
                       P1
@@ -180,7 +195,7 @@ export const CharacterSelect: React.FC<CharacterSelectProps> = ({
         </div>
 
         {/* Right: Character Gimmick & 8-Skill Combos */}
-        <div className="lg:col-span-5 flex flex-col rounded-2xl bg-zinc-900/95 border border-zinc-700/80 p-4 shadow-2xl">
+        <div className="lg:col-span-5 flex flex-col rounded-2xl glass-panel p-4 animate-fade-up">
           <div className="flex items-start justify-between border-b border-zinc-800 pb-2.5 mb-2.5">
             <div>
               <div className="flex items-center gap-2">

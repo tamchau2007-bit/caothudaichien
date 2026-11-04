@@ -30,18 +30,44 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
   return (
     <div className="absolute inset-0 z-30 flex flex-col justify-between bg-gradient-to-b from-[#080b14] via-[#0d1222] to-[#170e28] text-white p-6 md:p-12 overflow-hidden select-none">
-      {/* Background Animated Subtle Glow & Chinese/Vietnamese Arena Vignette */}
-      <div className="absolute -top-32 -left-32 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-rose-500/10 rounded-full blur-3xl pointer-events-none" />
+      {/* Background: arena grid, drifting glow orbs, embers */}
+      <div
+        className="absolute inset-0 pointer-events-none opacity-[0.22]"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)',
+          backgroundSize: '56px 56px',
+          maskImage: 'radial-gradient(circle at 50% 45%, black, transparent 78%)',
+          WebkitMaskImage: 'radial-gradient(circle at 50% 45%, black, transparent 78%)',
+        }}
+      />
+      <div className="absolute -top-32 -left-32 w-[28rem] h-[28rem] bg-amber-500/12 rounded-full blur-3xl pointer-events-none animate-floaty" />
+      <div className="absolute -bottom-40 -right-32 w-[30rem] h-[30rem] bg-rose-500/12 rounded-full blur-3xl pointer-events-none animate-floaty" style={{ animationDelay: '1.6s' }} />
+      <div className="absolute top-1/3 right-1/4 w-72 h-72 bg-sky-500/10 rounded-full blur-3xl pointer-events-none animate-floaty" style={{ animationDelay: '3s' }} />
+      {[...Array(14)].map((_, i) => (
+        <span
+          key={i}
+          className="absolute rounded-full bg-amber-300/40 pointer-events-none animate-floaty"
+          style={{
+            left: `${(i * 37) % 100}%`,
+            top: `${(i * 53) % 100}%`,
+            width: 2 + (i % 3),
+            height: 2 + (i % 3),
+            animationDelay: `${i * 0.45}s`,
+            animationDuration: `${5 + (i % 4)}s`,
+            boxShadow: '0 0 10px rgba(251,191,36,0.6)',
+          }}
+        />
+      ))}
 
       {/* Top Bar with Mute & Settings */}
       <div className="flex items-center justify-between z-10">
         <div className="flex items-center gap-3">
-          <span className="px-3 py-1 rounded bg-amber-500/15 border border-amber-500/40 text-amber-300 font-mono text-xs tracking-wider uppercase font-semibold">
-            Võ Đài Trực Tuyến 60 FPS
+          <span className="px-3 py-1 rounded-full bg-amber-500/10 border border-amber-400/40 text-amber-300 font-mono text-[11px] tracking-[0.18em] uppercase font-bold shadow-[0_0_18px_rgba(245,158,11,0.18)]">
+            Rollback Netcode · 60 FPS
           </span>
-          <span className="text-zinc-400 text-xs hidden sm:inline">
-            FSM Netcode · 8 Cao Thủ · 8 Combo Kỹ Năng
+          <span className="text-zinc-400 text-xs hidden sm:inline tracking-wide">
+            8 Cao Thủ · 8 Combo Kỹ Năng · Đồng Bộ 1 Khung Hình
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -63,8 +89,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
       {/* Hero Centerpiece: Bespoke SVG Title Lockup */}
       <div className="flex flex-col items-center justify-center my-auto z-10 text-center max-w-4xl mx-auto">
-        <div className="relative mb-6">
-          <svg className="w-72 sm:w-96 md:w-[500px] h-auto drop-shadow-[0_0_35px_rgba(245,158,11,0.45)]" viewBox="0 0 560 130">
+        <div className="relative mb-6 animate-fade-up">
+          <div className="absolute inset-0 -m-10 rounded-full bg-amber-500/20 blur-3xl pointer-events-none" />
+          <svg className="relative w-72 sm:w-96 md:w-[500px] h-auto drop-shadow-[0_0_35px_rgba(245,158,11,0.45)]" viewBox="0 0 560 130">
             <defs>
               <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor="#fff9c4" />
@@ -125,7 +152,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           </svg>
         </div>
 
-        <p className="text-zinc-300 text-sm sm:text-base max-w-xl mx-auto mb-8 font-medium leading-relaxed">
+        <p className="text-zinc-300 text-sm sm:text-base max-w-xl mx-auto mb-8 font-medium leading-relaxed animate-fade-up" style={{ animationDelay: '0.08s' }}>
           Đại hội võ lâm đỉnh phong quy tụ 8 cao thủ võ lâm với bộ chiêu thức tổ hợp độc bản, cơ chế Siêu Giáp, Phản Đòn, Nảy Tường và Netcode mượt mà.
         </p>
 
@@ -135,7 +162,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           <button
             data-start="true"
             onClick={() => onSelectMode('ai')}
-            className="group relative flex flex-col items-center justify-center p-4 rounded-xl bg-gradient-to-b from-amber-500 to-amber-700 text-zinc-950 font-bold border-2 border-amber-300 shadow-[0_0_25px_rgba(245,158,11,0.35)] hover:scale-105 active:scale-95 transition cursor-pointer"
+            className="group relative flex flex-col items-center justify-center p-4 rounded-xl btn-primary border-2 border-amber-200/70 hover:scale-[1.04] active:scale-95 cursor-pointer"
           >
             <Bot className="w-7 h-7 mb-1.5 group-hover:rotate-12 transition" />
             <span className="text-base font-black tracking-wide uppercase font-serif">Đấu Với Máy</span>
@@ -145,7 +172,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           {/* 2. Đấu Online (Room Code) */}
           <button
             onClick={() => onOpenOnlineLobby()}
-            className="flex flex-col items-center justify-center p-4 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-amber-400 font-bold border border-amber-500/40 hover:border-amber-400 shadow-md hover:scale-105 active:scale-95 transition cursor-pointer"
+            className="group flex flex-col items-center justify-center p-4 rounded-xl bg-zinc-900/70 backdrop-blur-md text-amber-300 font-bold border border-amber-500/40 hover:border-amber-300 hover:bg-zinc-900/90 shadow-[0_8px_28px_rgba(0,0,0,0.45)] hover:shadow-[0_0_26px_rgba(245,158,11,0.28)] hover:scale-[1.04] active:scale-95 transition-all duration-200 cursor-pointer"
           >
             <Globe className="w-7 h-7 mb-1.5 text-amber-400" />
             <span className="text-base font-black tracking-wide uppercase">Phòng Online</span>
@@ -155,7 +182,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           {/* 3. Phòng Luyện Tập (Training Mode) */}
           <button
             onClick={() => onSelectMode('training')}
-            className="flex flex-col items-center justify-center p-4 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-emerald-400 font-bold border border-emerald-500/40 hover:border-emerald-400 shadow-md hover:scale-105 active:scale-95 transition cursor-pointer"
+            className="group flex flex-col items-center justify-center p-4 rounded-xl bg-zinc-900/70 backdrop-blur-md text-emerald-300 font-bold border border-emerald-500/40 hover:border-emerald-300 hover:bg-zinc-900/90 shadow-[0_8px_28px_rgba(0,0,0,0.45)] hover:shadow-[0_0_26px_rgba(16,185,129,0.28)] hover:scale-[1.04] active:scale-95 transition-all duration-200 cursor-pointer"
           >
             <Dumbbell className="w-7 h-7 mb-1.5 text-emerald-400" />
             <span className="text-base font-black tracking-wide uppercase">Luyện Tập</span>
@@ -165,7 +192,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           {/* 4. Đối Kháng Cục Bộ (Local 2P) */}
           <button
             onClick={() => onSelectMode('local2p')}
-            className="flex flex-col items-center justify-center p-4 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-cyan-400 font-bold border border-cyan-500/40 hover:border-cyan-400 shadow-md hover:scale-105 active:scale-95 transition cursor-pointer"
+            className="group flex flex-col items-center justify-center p-4 rounded-xl bg-zinc-900/70 backdrop-blur-md text-cyan-300 font-bold border border-cyan-500/40 hover:border-cyan-300 hover:bg-zinc-900/90 shadow-[0_8px_28px_rgba(0,0,0,0.45)] hover:shadow-[0_0_26px_rgba(6,182,212,0.28)] hover:scale-[1.04] active:scale-95 transition-all duration-200 cursor-pointer"
           >
             <Users className="w-7 h-7 mb-1.5 text-cyan-400" />
             <span className="text-base font-black tracking-wide uppercase">2 Người 1 Máy</span>

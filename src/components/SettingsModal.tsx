@@ -22,7 +22,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75">
-      <div className="relative w-full max-w-lg rounded-2xl bg-zinc-900 border border-zinc-700/80 p-6 text-white shadow-2xl overflow-y-auto max-h-[90vh]">
+      <div className="relative w-full max-w-lg rounded-2xl glass-panel animate-pop-in p-6 text-white overflow-y-auto max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-800 pb-3 mb-5">
           <div className="flex items-center gap-2.5">

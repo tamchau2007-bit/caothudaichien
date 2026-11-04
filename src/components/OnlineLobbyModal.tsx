@@ -209,7 +209,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
         /* STEP 1: JOIN OR CREATE */
         <div className="flex-1 flex flex-col items-center justify-center my-auto z-10 max-w-xl mx-auto w-full py-8">
           <div className="text-center mb-8">
-            <h2 className="text-2xl sm:text-3xl font-black font-serif text-white mb-2">
+            <h2 className="text-2xl sm:text-3xl font-black tracking-tight bg-gradient-to-b from-white via-amber-200 to-amber-500 bg-clip-text text-transparent mb-2">
               KẾT NỐI VÕ ĐÀI TRỰC TUYẾN
             </h2>
             <p className="text-zinc-400 text-sm leading-relaxed">
@@ -226,7 +226,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full mb-6">
             <button
               onClick={handleCreate}
-              className="group flex flex-col items-center justify-center p-6 rounded-2xl bg-gradient-to-b from-amber-500 to-amber-700 text-zinc-950 font-bold border-2 border-amber-300 shadow-[0_0_30px_rgba(245,158,11,0.3)] hover:scale-105 active:scale-95 transition cursor-pointer"
+              className="group flex flex-col items-center justify-center p-6 rounded-2xl btn-primary border-2 border-amber-200/70 hover:scale-[1.03] active:scale-95 cursor-pointer"
             >
               <Sparkles className="w-9 h-9 mb-2 group-hover:rotate-12 transition" />
               <span className="text-lg font-black tracking-wide uppercase font-serif">
@@ -237,7 +237,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
               </span>
             </button>
 
-            <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-zinc-900/90 border border-zinc-700 shadow-xl">
+            <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-zinc-950/70 border border-white/10 backdrop-blur-md shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
               <Users className="w-8 h-8 mb-2 text-cyan-400" />
               <span className="text-base font-bold text-white mb-3">Nhập Mã Phòng</span>
               <div className="flex items-center gap-2 w-full">
@@ -270,7 +270,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
           )}
 
           {/* ROOM CODE DISPLAY */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-950/60 via-zinc-900 to-purple-950/60 border-2 border-amber-500/50 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-950/60 via-zinc-900 to-purple-950/60 border-2 border-amber-500/50 shadow-[0_0_40px_rgba(245,158,11,0.18)] flex flex-col sm:flex-row items-center justify-between gap-4 backdrop-blur-md">
             <div className="flex items-center gap-4">
               <div className="px-3.5 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold text-xs uppercase">
                 {isHost ? 'Chủ Phòng (Host)' : 'Khách Đấu (Guest)'}

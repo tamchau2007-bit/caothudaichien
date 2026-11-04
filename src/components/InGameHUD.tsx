@@ -5,7 +5,18 @@
 
 import React, { useState } from 'react';
 import { FighterEntity, GameMode } from '../game/types';
-import { Volume2, VolumeX, Pause, Settings, HelpCircle, Swords } from 'lucide-react';
+import {
+  Volume2,
+  VolumeX,
+  Pause,
+  Settings,
+  HelpCircle,
+  Swords,
+  Heart,
+  Zap,
+  Wifi,
+  Timer,
+} from 'lucide-react';
 import { sound } from '../game/sound';
 
 interface InGameHUDProps {
@@ -18,6 +29,165 @@ interface InGameHUDProps {
   onPause: () => void;
   onOpenSettings: () => void;
 }
+
+interface StatusLine {
+  text: string;
+  tone: string;
+}
+
+const toneClasses: Record<string, string> = {
+  amber: 'border-amber-400/40 bg-amber-500/10 text-amber-200',
+  cyan: 'border-cyan-400/40 bg-cyan-500/10 text-cyan-200',
+  violet: 'border-violet-400/40 bg-violet-500/10 text-violet-200',
+  rose: 'border-rose-400/40 bg-rose-500/10 text-rose-200',
+  emerald: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200',
+};
+
+const FighterCard: React.FC<{ f: FighterEntity; side: 'left' | 'right' }> = ({ f, side }) => {
+  const hpPercent = Math.max(0, Math.min(100, (f.hp / f.character.maxHp) * 100));
+  const staPercent = Math.max(0, Math.min(100, (f.stamina / f.character.maxStamina) * 100));
+  const lowHp = hpPercent <= 25;
+  const isRight = side === 'right';
+
+  const statuses: StatusLine[] = [];
+  if (f.character.id === 'hoang_saigon' && f.hoangScaleBonus > 1.0) {
+    statuses.push({
+      text: `NÉN MỠ +${Math.round((f.hoangScaleBonus - 1) * 100)}% · GIÁP +${Math.round(f.hoangArmorBonus * 100)}%`,
+      tone: 'amber',
+    });
+  }
+  if (f.character.id === 'le_dao') {
+    statuses.push({ text: `CỐT KHẢI ${f.ribBonesAvailable}/12`, tone: 'amber' });
+  }
+  if (f.character.id === 'hung_chimbay' && f.airDriftCharge > 0) {
+    statuses.push({ text: `CÁNH ĐẠI BÀNG ${Math.round(f.airDriftCharge)}%`, tone: 'emerald' });
+  }
+  if (f.character.id === 'hoang_xitrum') {
+    statuses.push({ text: 'MÈO TRỢ CHIẾN', tone: 'emerald' });
+  }
+  if (f.poisonClawStacks > 0) {
+    statuses.push({ text: `VUỐT ĐỘC ${f.poisonClawStacks}/5`, tone: 'violet' });
+  }
+  if (f.wibuStacks > 0) {
+    statuses.push({ text: `MÊ MUỘI ${f.wibuStacks}/5`, tone: 'rose' });
+  }
+  if (f.beatboxFlowActive) {
+    statuses.push({ text: 'BEATBOX FLOW', tone: 'cyan' });
+  }
+  if (f.shadowClonesCount > 0) {
+    statuses.push({ text: `PHÂN THÂN ×${f.shadowClonesCount}`, tone: 'violet' });
+  }
+
+  return (
+    <div className={`flex-1 max-w-[30rem] pointer-events-auto ${isRight ? 'text-right' : ''}`}>
+      <div className={`flex items-center gap-2.5 mb-1.5 ${isRight ? 'flex-row-reverse' : ''}`}>
+        <div
+          className="relative w-11 h-11 sm:w-14 sm:h-14 shrink-0 rounded-2xl flex items-center justify-center font-black text-xl sm:text-2xl text-white border-2 shadow-[0_0_22px_rgba(0,0,0,0.65)]"
+          style={{
+            backgroundColor: f.character.colorTheme.primary,
+            borderColor: f.character.colorTheme.spark,
+            boxShadow: `0 0 26px ${f.character.colorTheme.spark}55`,
+          }}
+        >
+          <span className="drop-shadow-[0_2px_4px_rgba(0,0,0,0.7)]">{f.character.name.charAt(0)}</span>
+          <span
+            className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-zinc-950 flex items-center justify-center"
+            style={{ backgroundColor: f.character.colorTheme.secondary }}
+          >
+            <Swords className="w-2 h-2 text-zinc-950" />
+          </span>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className={`flex items-baseline gap-2 ${isRight ? 'justify-end' : ''}`}>
+            <span className="text-white font-black text-sm sm:text-lg tracking-wide truncate drop-shadow-[0_2px_6px_rgba(0,0,0,0.8)]">
+              {f.character.name}
+            </span>
+            <span className="hidden sm:inline text-[9px] uppercase tracking-[0.18em] text-zinc-400 font-bold truncate">
+              {f.character.archetype}
+            </span>
+          </div>
+          <div className={`flex items-center gap-1.5 mt-0.5 ${isRight ? 'justify-end' : ''}`}>
+            <Heart className={`w-3 h-3 ${lowHp ? 'text-rose-400 animate-pulse' : 'text-rose-300/70'}`} />
+            <span className="text-[10px] sm:text-[11px] font-mono font-bold text-zinc-200 tabular-nums">
+              {Math.round(f.hp)}
+              <span className="text-zinc-500"> / {f.character.maxHp}</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* HP BAR: slow "ghost" trail + fast main bar */}
+      <div
+        className={`relative h-5 sm:h-6 w-full rounded-lg overflow-hidden border shadow-[inset_0_2px_8px_rgba(0,0,0,0.8)] ${
+          lowHp ? 'border-rose-400/70 animate-lowhp' : 'border-zinc-700/80'
+        }`}
+        style={{ backgroundColor: 'rgba(9, 9, 18, 0.92)' }}
+      >
+        <div
+          className="absolute inset-y-0 bg-gradient-to-r from-rose-500/70 to-amber-300/60 transition-[width] duration-700 ease-out"
+          style={{ width: `${hpPercent}%`, [isRight ? 'right' : 'left']: 0 } as React.CSSProperties}
+        />
+        <div
+          className={`absolute inset-y-0 transition-[width] duration-100 ease-linear ${
+            hpPercent > 50
+              ? 'bg-gradient-to-r from-emerald-600 via-emerald-400 to-emerald-300'
+              : hpPercent > 20
+                ? 'bg-gradient-to-r from-amber-600 via-amber-400 to-yellow-300'
+                : 'bg-gradient-to-r from-rose-700 via-rose-500 to-rose-400'
+          }`}
+          style={{
+            width: `${hpPercent}%`,
+            [isRight ? 'right' : 'left']: 0,
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -6px 10px rgba(0,0,0,0.35)',
+          } as React.CSSProperties}
+        />
+        {/* Segment ticks */}
+        <div
+          className="absolute inset-0 opacity-40 pointer-events-none"
+          style={{
+            backgroundImage:
+              'repeating-linear-gradient(90deg, rgba(0,0,0,0.55) 0 1px, rgba(0,0,0,0) 1px 12.5%)',
+          }}
+        />
+        <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />
+      </div>
+
+      {/* STAMINA */}
+      <div className="relative h-2 sm:h-2.5 w-full rounded-full mt-1 overflow-hidden border border-cyan-500/25 bg-zinc-950/85">
+        <div
+          className={`absolute inset-y-0 transition-[width] duration-150 ease-out ${
+            f.stamina < 15
+              ? 'bg-gradient-to-r from-rose-600 to-rose-400'
+              : 'bg-gradient-to-r from-sky-500 via-cyan-400 to-teal-300'
+          }`}
+          style={{ width: `${staPercent}%`, [isRight ? 'right' : 'left']: 0 } as React.CSSProperties}
+        />
+        <div className="absolute inset-0 flex items-center px-1.5">
+          <span className={`flex items-center gap-1 text-[8px] font-mono font-bold text-cyan-100/90 ${isRight ? 'ml-auto' : ''}`}>
+            <Zap className="w-2.5 h-2.5" />
+            {Math.round(f.stamina)}
+          </span>
+        </div>
+      </div>
+
+      {statuses.length > 0 && (
+        <div className={`mt-1.5 flex flex-wrap gap-1 ${isRight ? 'justify-end' : ''}`}>
+          {statuses.slice(0, 3).map((s) => (
+            <span
+              key={s.text}
+              className={`px-1.5 py-[2px] rounded-md border text-[8px] sm:text-[9px] font-mono font-bold tracking-wide ${
+                toneClasses[s.tone] || toneClasses.amber
+              }`}
+            >
+              {s.text}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const InGameHUD: React.FC<InGameHUDProps> = ({
   p1,
@@ -37,257 +207,117 @@ export const InGameHUD: React.FC<InGameHUDProps> = ({
     setIsMuted(sound.isMuted);
   };
 
-  const p1HpPercent = Math.max(0, Math.min(100, (p1.hp / p1.character.maxHp) * 100));
-  const p2HpPercent = Math.max(0, Math.min(100, (p2.hp / p2.character.maxHp) * 100));
+  const timeLeft = Math.ceil(roundTime);
+  const urgent = mode !== 'training' && timeLeft <= 10;
 
-  const p1StaPercent = Math.max(0, Math.min(100, (p1.stamina / p1.character.maxStamina) * 100));
-  const p2StaPercent = Math.max(0, Math.min(100, (p2.stamina / p2.character.maxStamina) * 100));
-
-  const getHpColor = (percent: number) => {
-    if (percent > 50) return 'bg-emerald-500';
-    if (percent > 20) return 'bg-amber-400';
-    return 'bg-rose-500 animate-pulse';
-  };
+  const pingTone = !netInfo
+    ? 'text-zinc-400'
+    : netInfo.ping > 140
+      ? 'text-rose-400'
+      : netInfo.ping > 80
+        ? 'text-amber-300'
+        : 'text-emerald-400';
 
   return (
-    <div className="absolute inset-0 pointer-events-none select-none z-20 flex flex-col justify-between p-3 sm:p-6 overflow-hidden">
-      {/* Top Header Cluster: Health, Stamina, Avatars, Timer, Ping */}
-      <div className="w-full flex items-start justify-between gap-2 sm:gap-6">
-        {/* PLAYER 1 STATUS (Left) */}
-        <div className="flex-1 max-w-sm sm:max-w-md pointer-events-auto">
-          <div className="flex items-center gap-2 mb-1.5">
-            <div
-              className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center font-black font-serif text-white text-lg shadow-lg border-2 border-amber-400"
-              style={{ backgroundColor: p1.character.colorTheme.primary }}
-            >
-              {p1.character.name.charAt(0)}
-            </div>
-            <div className="truncate">
-              <div className="text-white font-black text-sm sm:text-base font-serif tracking-wide truncate">
-                {p1.character.name}
-              </div>
-              <div className="text-[10px] text-amber-300 font-semibold tracking-wider uppercase">
-                {p1.character.archetype}
-              </div>
-            </div>
-          </div>
+    <div className="absolute inset-0 pointer-events-none select-none z-20 flex flex-col justify-between p-3 sm:p-5 overflow-hidden">
+      {/* TOP: fighters + timer */}
+      <div className="w-full flex items-start justify-between gap-2 sm:gap-5">
+        <FighterCard f={p1} side="left" />
 
-          {/* P1 HP Bar */}
-          <div className="relative h-5 sm:h-6 w-full rounded-md bg-zinc-950/80 border border-zinc-700/80 overflow-hidden shadow-inner mb-1">
-            <div
-              className={`h-full transition-all duration-100 ${getHpColor(p1HpPercent)}`}
-              style={{ width: `${p1HpPercent}%` }}
-            />
-            <div className="absolute inset-0 flex items-center justify-between px-2 text-[10px] sm:text-xs font-mono font-bold text-white drop-shadow">
-              <span>HP</span>
-              <span className="tabular-nums">
-                {Math.round(p1.hp)} / {p1.character.maxHp}
+        <div className="flex flex-col items-center gap-1 shrink-0">
+          <div
+            className={`relative px-3.5 sm:px-5 py-1 rounded-2xl border backdrop-blur-md ${
+              urgent
+                ? 'border-rose-400/80 bg-rose-950/70 shadow-[0_0_30px_rgba(244,63,94,0.5)]'
+                : 'border-amber-400/50 bg-zinc-950/80 shadow-[0_0_24px_rgba(0,0,0,0.7)]'
+            }`}
+          >
+            <div className="flex items-center gap-1.5">
+              <Timer className={`w-3.5 h-3.5 ${urgent ? 'text-rose-300' : 'text-amber-400/80'}`} />
+              <span
+                className={`text-2xl sm:text-4xl font-black font-mono tabular-nums leading-none ${
+                  urgent
+                    ? 'text-rose-300 animate-pulse drop-shadow-[0_0_12px_rgba(244,63,94,0.8)]'
+                    : 'text-amber-300 drop-shadow-[0_0_12px_rgba(245,158,11,0.45)]'
+                }`}
+              >
+                {mode === 'training' ? '∞' : timeLeft}
               </span>
             </div>
+            <div className="absolute inset-x-2 -bottom-[3px] h-[3px] rounded-full bg-gradient-to-r from-transparent via-amber-400/70 to-transparent" />
           </div>
 
-          {/* P1 Stamina Bar */}
-          <div className="relative h-2.5 sm:h-3 w-full rounded bg-zinc-950/80 border border-zinc-700/80 overflow-hidden mb-1">
-            <div
-              className={`h-full transition-all duration-75 ${
-                p1.stamina < 15 ? 'bg-rose-500 animate-pulse' : 'bg-cyan-400'
-              }`}
-              style={{ width: `${p1StaPercent}%` }}
-            />
-            <div className="absolute inset-0 flex items-center justify-end px-1.5 text-[8px] font-mono text-zinc-300 font-bold">
-              <span className="tabular-nums">{Math.round(p1.stamina)} STA</span>
-            </div>
-          </div>
-
-          {/* P1 Gimmick Badge */}
-          {p1.character.id === 'hoang_saigon' && p1.hoangScaleBonus > 1.0 && (
-            <div className="text-[10px] font-mono text-amber-300 font-bold">
-              NÉN MỠ: +{Math.round((p1.hoangScaleBonus - 1) * 100)}% KÍCH CỠ · +{Math.round(p1.hoangArmorBonus * 100)}% GIÁP
-            </div>
-          )}
-          {p1.character.id === 'le_dao' && (
-            <div className="text-[10px] font-mono text-amber-300 font-bold">
-              CỐT KHẢI: {p1.ribBonesAvailable}/12 XƯƠNG SƯỜN
-            </div>
-          )}
-          {p1.character.id === 'hoang_xitrum' && (
-            <div className="text-[10px] font-mono text-emerald-300 font-bold">
-              PET MÈO: TRỢ CHIẾN SÀN ĐẤU
-            </div>
-          )}
-          {p1.poisonClawStacks > 0 && (
-            <div className="text-[10px] font-mono text-purple-300 font-bold animate-pulse">
-              DÍNH VẾT CÀO ĐỘC: {p1.poisonClawStacks}/5 爪 (5 ĐÒN = NỔ 100 DMG!)
-            </div>
-          )}
-          {p1.wibuStacks > 0 && (
-            <div className="text-[10px] font-mono text-pink-300 font-bold">
-              DÍNH MÊ MUỘI WAIFU: {p1.wibuStacks}/5 ♥
-            </div>
-          )}
-        </div>
-
-        {/* CENTER CLUSTER: TIMER & MATCH METRICS */}
-        <div className="flex flex-col items-center justify-center pointer-events-auto">
-          {/* Round Timer */}
-          <div className="px-3.5 sm:px-5 py-1 sm:py-1.5 rounded-xl bg-zinc-950/95 border border-amber-500/60 shadow-[0_0_20px_rgba(0,0,0,0.8)] text-center">
-            <span className="text-2xl sm:text-4xl font-black font-mono text-amber-400 tabular-nums drop-shadow-[0_0_12px_rgba(245,158,11,0.5)]">
-              {mode === 'training' ? '∞' : Math.ceil(roundTime)}
-            </span>
-          </div>
-
-          {/* Network / Mode info */}
-          <div className="flex items-center gap-2 mt-1 px-2 py-0.5 rounded bg-zinc-950/80 border border-zinc-800 font-mono text-[9px] sm:text-[10px] text-zinc-300">
-            <span>FPS: 60</span>
-            <span>·</span>
+          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-zinc-950/85 border border-zinc-700/70 backdrop-blur-sm font-mono text-[8px] sm:text-[9px] text-zinc-300">
             {roomCode ? (
-              <span className="text-amber-400 font-bold">PHÒNG: {roomCode}</span>
+              <span className="text-amber-300 font-bold tracking-wider">PHÒNG {roomCode}</span>
             ) : (
-              <span className="uppercase text-amber-300/90">{mode}</span>
+              <span className="uppercase text-amber-200/90 tracking-wider">{mode}</span>
             )}
             {netInfo && (
               <>
-                <span>·</span>
-                <span
-                  className={
-                    netInfo.ping > 140
-                      ? 'text-rose-400 font-bold'
-                      : netInfo.ping > 80
-                        ? 'text-amber-300'
-                        : 'text-emerald-400'
-                  }
-                >
+                <span className="text-zinc-600">|</span>
+                <span className={`flex items-center gap-0.5 font-bold ${pingTone}`}>
+                  <Wifi className="w-2.5 h-2.5" />
                   {netInfo.ping}ms
                 </span>
-                <span>·</span>
-                <span className="text-cyan-300">RB {netInfo.rollback}</span>
-                <span>·</span>
-                <span className="text-zinc-400">DL {netInfo.delay}f</span>
+                <span className="text-cyan-300/90">RB{netInfo.rollback}</span>
               </>
             )}
           </div>
         </div>
 
-        {/* PLAYER 2 STATUS (Right) */}
-        <div className="flex-1 max-w-sm sm:max-w-md pointer-events-auto text-right">
-          <div className="flex items-center justify-end gap-2 mb-1.5">
-            <div className="truncate">
-              <div className="text-white font-black text-sm sm:text-base font-serif tracking-wide truncate">
-                {p2.character.name}
-              </div>
-              <div className="text-[10px] text-cyan-300 font-semibold tracking-wider uppercase">
-                {mode === 'ai' ? 'MÁY (BOT)' : p2.character.archetype}
-              </div>
-            </div>
-            <div
-              className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center font-black font-serif text-white text-lg shadow-lg border-2 border-cyan-400"
-              style={{ backgroundColor: p2.character.colorTheme.primary }}
-            >
-              {p2.character.name.charAt(0)}
-            </div>
-          </div>
-
-          {/* P2 HP Bar */}
-          <div className="relative h-5 sm:h-6 w-full rounded-md bg-zinc-950/80 border border-zinc-700/80 overflow-hidden shadow-inner mb-1">
-            <div
-              className={`h-full float-right transition-all duration-100 ${getHpColor(p2HpPercent)}`}
-              style={{ width: `${p2HpPercent}%` }}
-            />
-            <div className="absolute inset-0 flex items-center justify-between px-2 text-[10px] sm:text-xs font-mono font-bold text-white drop-shadow">
-              <span className="tabular-nums">
-                {Math.round(p2.hp)} / {p2.character.maxHp}
-              </span>
-              <span>HP</span>
-            </div>
-          </div>
-
-          {/* P2 Stamina Bar */}
-          <div className="relative h-2.5 sm:h-3 w-full rounded bg-zinc-950/80 border border-zinc-700/80 overflow-hidden mb-1">
-            <div
-              className={`h-full float-right transition-all duration-75 ${
-                p2.stamina < 15 ? 'bg-rose-500 animate-pulse' : 'bg-cyan-400'
-              }`}
-              style={{ width: `${p2StaPercent}%` }}
-            />
-            <div className="absolute inset-0 flex items-center justify-start px-1.5 text-[8px] font-mono text-zinc-300 font-bold">
-              <span className="tabular-nums">{Math.round(p2.stamina)} STA</span>
-            </div>
-          </div>
-
-          {/* P2 Gimmick Badge */}
-          {p2.character.id === 'hoang_saigon' && p2.hoangScaleBonus > 1.0 && (
-            <div className="text-[10px] font-mono text-amber-300 font-bold">
-              NÉN MỠ: +{Math.round((p2.hoangScaleBonus - 1) * 100)}% SIZE · +{Math.round(p2.hoangArmorBonus * 100)}% GIÁP
-            </div>
-          )}
-          {p2.character.id === 'le_dao' && (
-            <div className="text-[10px] font-mono text-amber-300 font-bold">
-              CỐT KHẢI: {p2.ribBonesAvailable}/12 XƯƠNG
-            </div>
-          )}
-          {p2.poisonClawStacks > 0 && (
-            <div className="text-[10px] font-mono text-purple-300 font-bold animate-pulse">
-              DÍNH VẾT CÀO ĐỘC: {p2.poisonClawStacks}/5 爪 (5 ĐÒN = NỔ 100 DMG!)
-            </div>
-          )}
-          {p2.wibuStacks > 0 && (
-            <div className="text-[10px] font-mono text-pink-300 font-bold">
-              DÍNH MÊ MUỘI WAIFU: {p2.wibuStacks}/5 ♥
-            </div>
-          )}
-        </div>
+        <FighterCard f={p2} side="right" />
       </div>
 
-      {/* MID VIEWPORT: COMBO COUNTERS (Floating & Low-Occlusion) */}
-      <div className="w-full flex items-center justify-between px-4 sm:px-12 my-auto">
-        {/* P1 Combo Counter */}
-        {p1.comboHits >= 2 && p1.comboTimer > 0 && (
-          <div className="flex flex-col items-start animate-bounce">
-            <div className="text-xl sm:text-3xl font-black font-mono text-amber-400 tracking-wider drop-shadow-[0_0_10px_rgba(245,158,11,0.8)]">
-              COMBO {p1.comboHits} HITS!
+      {/* COMBO COUNTERS */}
+      <div className="w-full flex items-center justify-between px-3 sm:px-10">
+        {p1.comboHits >= 2 && p1.comboTimer > 0 ? (
+          <div className="animate-combo-pop">
+            <div className="text-2xl sm:text-4xl font-black italic tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-amber-200 via-amber-400 to-orange-600 drop-shadow-[0_0_18px_rgba(245,158,11,0.7)]">
+              {p1.comboHits} <span className="text-lg sm:text-2xl">HITS</span>
             </div>
-            <div className="text-sm sm:text-base font-bold font-mono text-rose-400 drop-shadow">
-              {p1.comboDamage} SÁT THƯƠNG
+            <div className="text-[10px] sm:text-xs font-mono font-bold text-rose-300/90 tracking-widest">
+              {p1.comboDamage} DMG
             </div>
           </div>
+        ) : (
+          <div />
         )}
 
-        <div className="flex-1" />
-
-        {/* P2 Combo Counter */}
-        {p2.comboHits >= 2 && p2.comboTimer > 0 && (
-          <div className="flex flex-col items-end animate-bounce">
-            <div className="text-xl sm:text-3xl font-black font-mono text-cyan-400 tracking-wider drop-shadow-[0_0_10px_rgba(6,182,212,0.8)]">
-              COMBO {p2.comboHits} HITS!
+        {p2.comboHits >= 2 && p2.comboTimer > 0 ? (
+          <div className="animate-combo-pop text-right">
+            <div className="text-2xl sm:text-4xl font-black italic tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-cyan-200 via-sky-400 to-blue-600 drop-shadow-[0_0_18px_rgba(56,189,248,0.7)]">
+              {p2.comboHits} <span className="text-lg sm:text-2xl">HITS</span>
             </div>
-            <div className="text-sm sm:text-base font-bold font-mono text-rose-400 drop-shadow">
-              {p2.comboDamage} SÁT THƯƠNG
+            <div className="text-[10px] sm:text-xs font-mono font-bold text-rose-300/90 tracking-widest">
+              {p2.comboDamage} DMG
             </div>
           </div>
+        ) : (
+          <div />
         )}
       </div>
 
-      {/* BOTTOM UTILITY & QUICK SKILL CHEAT SHEET */}
-      <div className="w-full flex items-end justify-between gap-3 pointer-events-auto">
-        {/* Left: Quick 8-Skill Combos Cheat Sheet Button / Box */}
+      {/* BOTTOM BAR */}
+      <div className="w-full flex items-end justify-between gap-2 pointer-events-auto">
         <div className="flex flex-col items-start">
           {showCheatSheet && (
-            <div className="p-3 mb-2 rounded-xl bg-zinc-950/95 border border-amber-500/40 text-xs font-mono shadow-2xl space-y-1 w-72 sm:w-80 animate-in fade-in">
-              <div className="font-bold text-amber-400 uppercase text-[11px] mb-1">
-                Tổ Hợp 8 Kỹ Năng ({p1.character.name}):
+            <div className="animate-fade-up p-3 mb-2 rounded-2xl glass-panel text-xs font-mono shadow-2xl w-72 sm:w-80">
+              <div className="font-bold text-amber-300 uppercase text-[10px] tracking-[0.18em] mb-2">
+                Bộ chiêu · {p1.character.name}
               </div>
-              <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px]">
-                <div><span className="text-amber-300 font-bold">J:</span> Đánh thường (0s)</div>
-                <div><span className="text-amber-300 font-bold">U:</span> Chiêu 1 (10s)</div>
-                <div><span className="text-amber-300 font-bold">I:</span> Chiêu 2 Nặng (15s)</div>
-                <div><span className="text-amber-300 font-bold">S+U:</span> Chiêu 3 Thủ/Phản</div>
-                <div><span className="text-amber-300 font-bold">S+I:</span> Chiêu 4 Quét Sàn</div>
-                <div><span className="text-amber-300 font-bold">W+U:</span> Chiêu 5 Buff Khí</div>
-                <div><span className="text-amber-300 font-bold">W+I:</span> Chiêu 6 Bẫy/Kéo</div>
-                <div><span className="text-amber-300 font-bold">S+J:</span> Chiêu 7 Lao/Vật</div>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10px] text-zinc-300">
+                <div><span className="text-amber-300 font-bold">J</span> Đánh thường</div>
+                <div><span className="text-amber-300 font-bold">U</span> Chiêu 1</div>
+                <div><span className="text-amber-300 font-bold">I</span> Chiêu 2</div>
+                <div><span className="text-amber-300 font-bold">S+U</span> Thủ / Phản</div>
+                <div><span className="text-amber-300 font-bold">S+I</span> Quét sàn</div>
+                <div><span className="text-amber-300 font-bold">W+U</span> Buff khí</div>
+                <div><span className="text-amber-300 font-bold">W+I</span> Bẫy / Kéo</div>
+                <div><span className="text-amber-300 font-bold">S+J</span> Lao / Vật</div>
               </div>
-              <div className="pt-1 border-t border-zinc-800 text-rose-400 font-bold text-[11px]">
-                W + J: Tuyệt Chiêu Tối Thượng (Ulti - 60 Sta)
+              <div className="pt-1.5 mt-1.5 border-t border-white/10 text-rose-300 font-bold text-[10px] tracking-wide">
+                W + J · TUYỆT CHIÊU TỐI THƯỢNG
               </div>
             </div>
           )}
@@ -295,40 +325,40 @@ export const InGameHUD: React.FC<InGameHUDProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowCheatSheet(!showCheatSheet)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700 text-xs font-medium transition cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-950/80 hover:bg-zinc-900 text-zinc-300 hover:text-white border border-white/10 text-[11px] font-semibold backdrop-blur-md transition-all hover:border-amber-400/40 hover:shadow-[0_0_18px_rgba(245,158,11,0.25)] cursor-pointer"
             >
-              <HelpCircle className="w-4 h-4 text-amber-400" />
-              {showCheatSheet ? 'Đóng Bảng Chiêu' : 'Xem 8 Chiêu [H]'}
+              <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
+              {showCheatSheet ? 'Đóng' : '8 Chiêu'}
             </button>
-            <span className="text-zinc-400 text-[11px] font-mono hidden md:inline">
-              K: Nhảy · S+K: Tụt Bục · L: Lướt (Lùi/Tiến) · J: Combo 3 Đòn · Giữ W: Hồi HP/Sta
+            <span className="hidden lg:inline text-zinc-400/80 text-[10px] font-mono px-2 py-1 rounded-lg bg-zinc-950/50 border border-white/5">
+              K nhảy · S+K tụt bục · L lướt · W giữ hồi sức · W+J ulti
             </span>
           </div>
         </div>
 
-        {/* Right: Quick Action Buttons (Mute, Pause, Settings) */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={toggleSound}
-            aria-label="Mute Audio"
-            className="p-2 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700 transition cursor-pointer"
-          >
-            {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
-          </button>
-          <button
-            onClick={onPause}
-            aria-label="Tạm Dừng"
-            className="p-2 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700 transition cursor-pointer"
-          >
-            <Pause className="w-4 h-4 text-amber-400" />
-          </button>
-          <button
-            onClick={onOpenSettings}
-            aria-label="Cài Đặt"
-            className="p-2 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700 transition cursor-pointer"
-          >
-            <Settings className="w-4 h-4 text-zinc-300" />
-          </button>
+        <div className="flex items-center gap-1.5">
+          {[
+            {
+              onClick: toggleSound,
+              label: 'Âm thanh',
+              icon: isMuted ? (
+                <VolumeX className="w-4 h-4 text-rose-400" />
+              ) : (
+                <Volume2 className="w-4 h-4 text-emerald-400" />
+              ),
+            },
+            { onClick: onPause, label: 'Tạm dừng', icon: <Pause className="w-4 h-4 text-amber-400" /> },
+            { onClick: onOpenSettings, label: 'Cài đặt', icon: <Settings className="w-4 h-4 text-sky-400" /> },
+          ].map((btn) => (
+            <button
+              key={btn.label}
+              onClick={btn.onClick}
+              aria-label={btn.label}
+              className="p-2 rounded-xl bg-zinc-950/80 hover:bg-zinc-900 border border-white/10 hover:border-white/25 text-zinc-300 hover:text-white backdrop-blur-md transition-all hover:shadow-[0_0_16px_rgba(255,255,255,0.15)] cursor-pointer"
+            >
+              {btn.icon}
+            </button>
+          ))}
         </div>
       </div>
     </div>
