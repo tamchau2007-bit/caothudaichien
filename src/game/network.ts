@@ -43,12 +43,19 @@ function makeClientId(): string {
   return `p_${rand}`;
 }
 
-function wsUrl(): string {
+function wsUrl(customHost: string | null = null): string {
   if (typeof window === 'undefined') return `ws://localhost:3000${WS_PATH}`;
   const envUrl = (import.meta as any)?.env?.VITE_WS_URL as string | undefined;
   if (envUrl) return envUrl;
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${window.location.host}${WS_PATH}`;
+  // If user provided a custom host (for LAN), use it.
+  if (customHost) return `${customHost}${WS_PATH}`;
+  // When on localhost, try to get local IP for LAN play.
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    // IP detection simplified: return localhost for now.
+    // User can manually specify customHost when joining LAN.
+    return `ws://localhost:3000${WS_PATH}`;
+  }
+  return `${window.location.protocol}//${window.location.host}${WS_PATH}`;
 }
 
 export class NetworkManager {
@@ -85,12 +92,14 @@ export class NetworkManager {
   private joinRoomResolve: (() => void) | null = null;
   private joinRoomReject: ((err: Error) => void) | null = null;
 
+  private pingTimer: number | null = null;
   private shouldStayConnected = false;
   private reconnectAttempts = 0;
   private reconnectTimer: number | null = null;
-  private pingTimer: number | null = null;
   private pendingJoin: ClientMessage | null = null;
-
+  /** Custom server host (for LAN play). Overrides auto-detected URL. */
+  public customHost: string | null = null;
+  
   // ------------------------------------------------------------------ public
 
   public async createRoom(characterId: CharacterId, mapId: string): Promise<string> {
@@ -234,7 +243,7 @@ export class NetworkManager {
 
   private openSocket() {
     try {
-      const socket = new WebSocket(wsUrl());
+      const socket = new WebSocket(wsUrl(this.customHost));
       this.socket = socket;
 
       socket.onopen = () => {

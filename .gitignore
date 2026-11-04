@@ -10,3 +10,4 @@ dist-server/
 
 # Local visual QA screenshots
 artifacts/
+/freebuff-sites-build/

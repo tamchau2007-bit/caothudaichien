@@ -46,6 +46,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
   const [participants, setParticipants] = useState<RoomParticipant[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<string>('Sẵn sàng');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [customServerIp, setCustomServerIp] = useState<string>('');
 
   const charList = Object.values(CHARACTERS);
   const mapList = Object.values(MAPS);
@@ -95,10 +96,14 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
     }
   }, [netManager, myChar, selectedMap, onStartOnlineMatch, initialRoomCode]);
 
+  // Detect local IP when on localhost (called on mount)
+// IP detect removed for simplicity - user can manually enter LAN IP
+
   const handleCreate = async () => {
     sound.playDash();
     setErrorMsg(null);
     try {
+      netManager.customHost = customServerIp || null;
       const code = await netManager.createRoom(myChar, selectedMap);
       setRoomCode(code);
       setIsHost(true);
@@ -115,6 +120,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
     setErrorMsg(null);
     const code = targetCode.toUpperCase().trim();
     try {
+      netManager.customHost = customServerIp || null;
       await netManager.joinRoom(code, myChar);
       setRoomCode(code);
       setIsHost(netManager.isHost);
